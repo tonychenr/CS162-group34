@@ -27,9 +27,13 @@ Nick Wissman <nickwissman@berkeley.edu>
 
 ---- DATA STRUCTURES ----
 
->> A1: 
+>> A1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+
 static struct intr_lock; \\ This lock must be acquired in timer_sleep() before interrupts can be disabled or enabled.
 
+A variable is added to the thread struct to keep track of the time left to sleep.
 struct thread
   {
     /* Time for the thread to sleep*/
@@ -70,6 +74,8 @@ We considered storing the sleep_ticks in a hashtable. This would be a waste of m
 >> B1: Copy here the declaration of each new or changed `struct' or
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
+
+The following variables are added to the thread stub to keep track of donators and donations to another thread.
 struct thread {
   /* The thread’s original priority, used to reset the priority after being donated to */
 int original_priority;
@@ -80,6 +86,8 @@ thread* wait_holder;
 /* A pointer to the corresponding donator_elem in the child’s list */
 struct donator_elem *donator_elem;
 }
+
+This struct holds information about a donator which is donating to this thread.
 struct donator_elem {
   /* A pointer to a lock being requested by another thread */
 struct lock* parent_lock;
@@ -149,9 +157,12 @@ In choosing our design, we considered memory limitations and time complexity of 
 >> C1: Copy here the declaration of each new or changed `struct' or
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
+
 static int load_avg; \\ this stores the variable load_avg as described in the spec; located in thread.c
+
+Each thread needs to keep track of its own recent_cpu.
 struct thread{
-  int recent_cpu; \\
+  int recent_cpu; \\ This variable holds the calculated value of recent_cpu
 }
 
 ---- ALGORITHMS ----
