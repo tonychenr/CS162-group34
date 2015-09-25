@@ -44,27 +44,40 @@ struct thread
 
 >> A2: Briefly describe what happens in a call to timer_sleep(),
 >> including the effects of the timer interrupt handler.
-The thread calling timer_sleep() would have it’s sleep_ticks set to the time specified in the arguments of timer_sleep(). Then, thread_block() is called in timer_sleep(). The timer interrupt handler would decrement the sleep_ticks of each thread during each tick. If sleep_ticks becomes 0 after decrementing, the thread is unblocked with thread_unblock()
+The thread calling timer_sleep() would have it’s sleep_ticks set to the time specified in the arguments of timer_sleep().
+Then, thread_block() is called in timer_sleep().
+The timer interrupt handler would decrement the sleep_ticks of each thread during each tick.
+If sleep_ticks becomes 0 after decrementing, the thread is unblocked with thread_unblock().
 
 >> A3: What steps are taken to minimize the amount of time spent in
 >> the timer interrupt handler?
-The perform the minimum number of tasks required to perform the sleep routine. The ticks must be decremented with each tick of the timer, so that must be done in the timer interrupt. The thread wouldn’t know when to wake up unless some mechanism periodically checks to see if the sleep time is over.
+The perform the minimum number of tasks required to perform the sleep routine.
+The ticks must be decremented with each tick of the timer, so that must be done in the timer interrupt.
+The thread wouldn’t know when to wake up unless some mechanism periodically checks to see if the sleep time is over.
 
 ---- SYNCHRONIZATION ----
 
 >> A4: How are race conditions avoided when multiple threads call
 >> timer_sleep() simultaneously?
-There could be a race condition where both threads disable interrupts. Then, one thread finishes and enables interrupts before the other one has called thread_block(). To prevent this, we defined a global lock on interrupt setting. This requires each timer_sleep() call to finish before another one starts.
+There could be a race condition where both threads disable interrupts.
+Then, one thread finishes and enables interrupts before the other one has called thread_block().
+To prevent this, we defined a global lock on interrupt setting.
+This requires each timer_sleep() call to finish before another one starts.
 
 >> A5: How are race conditions avoided when a timer interrupt occurs
 >> during a call to timer_sleep()?
-Interrupts are disabled at the beginning timer_sleep(), so a timer interrupt won’t occur during a call to timer_sleep(). Interrupts are reenabled at the end of the function.
+Interrupts are disabled at the beginning timer_sleep(), so a timer interrupt won’t occur during a call to timer_sleep().
+Interrupts are reenabled at the end of the function.
 
 ---- RATIONALE ----
 
 >> A6: Why did you choose this design?  In what ways is it superior to
 >> another design you considered?
-We considered storing the sleep_ticks in a hashtable. This would be a waste of memory and the size may need to be increased to accommodate more threads or decreased to not waste memory. We could also place an if statement inside the intr_disable() and intr_enable() functions, instead of having a lock for interrupt disabling/enabling. We chose this design, because it is easier to see the purpose and is simpler for others reading the code to understand. The disadvantage would be that the system may panic when someone accidentally disables or enables interrupts at the wrong times, due to race conditions.
+We considered storing the sleep_ticks in a hashtable.
+This would be a waste of memory and the size may need to be increased to accommodate more threads or decreased to not waste memory.
+We could also place an if statement inside the intr_disable() and intr_enable() functions, instead of having a lock for interrupt disabling/enabling.
+We chose this design, because it is easier to see the purpose and is simpler for others reading the code to understand.
+The disadvantage would be that the system may panic when someone accidentally disables or enables interrupts at the wrong times, due to race conditions.
 
              PRIORITY SCHEDULING
              ===================
@@ -129,25 +142,44 @@ Semaphores, instead of using list_pop_front() to get the next thread to run, use
 >> B4: Describe the sequence of events when a call to lock_acquire()
 >> causes a priority donation.  How is nested donation handled?
 
-The thread calling lock_acquire() sets its child to the thread that currently owns the lock. Then, it checks the child’s parent_list to see if there is already a parent_elem corresponding to the lock it is requesting. If there is, it sets its own my_elem to that parent_elem, and sets the my_elem’s priority to the higher value of its own priority or the previous value of the entry’s priority. It then reinserts it to keep the list sorted by priority. If there is not, it creates a new parent_elem where parent_lock points to the lock it’s requesting and priority is its own priority. It then sets the child thread’s priority to the greater value of its own priority and the child’s priority. Then, it iterates through each child’s child, repeating the process until it gets to a thread with no child (and thus is not waiting on a lock). This would be done through a for/while loop.  If a thread along the way already has a my_elem, then we set that my_elem’s priority to the current thread’s priority if it’s higher. Otherwise, we know it doesn’t have a child and stop the loop.
+The thread calling lock_acquire() sets its child to the thread that currently owns the lock.
+Then, it checks the child’s parent_list to see if there is already a parent_elem corresponding to the lock it is requesting.
+If there is, it sets its own my_elem to that parent_elem, and sets the my_elem’s priority to the higher value of its own priority or the previous value of the entry’s priority.
+It then reinserts it to keep the list sorted by priority.
+If there is not, it creates a new parent_elem where parent_lock points to the lock it’s requesting and priority is its own priority.
+It then sets the child thread’s priority to the greater value of its own priority and the child’s priority.
+Then, it iterates through each child’s child, repeating the process until it gets to a thread with no child (and thus is not waiting on a lock).
+This would be done through a for/while loop.
+If a thread along the way already has a my_elem, then we set that my_elem’s priority to the current thread’s priority if it’s higher.
+Otherwise, we know it doesn’t have a child and stop the loop.
 
 >> B5: Describe the sequence of events when lock_release() is called
 >> on a lock that a higher-priority thread is waiting for.
-First, the thread that releases the lock removes the parent_elem corresponding to that lock from the parents list. Then, sets its priority to either original_priority (if parents list is empty) or the highest priority in parents list. Then, the higher-priority thread is granted acquisition of the lock as it is the first element on the locks waiting list. 
+First, the thread that releases the lock removes the parent_elem corresponding to that lock from the parents list.
+Then, sets its priority to either original_priority (if parents list is empty) or the highest priority in parents list.
+Then, the higher-priority thread is granted acquisition of the lock as it is the first element on the locks waiting list. 
 
 ---- SYNCHRONIZATION ----
 
 >> B6: Describe a potential race in thread_set_priority() and explain
 >> how your implementation avoids it.  Can you use a lock to avoid
 >> this race?
-There is a potential race when the thread_set_priority() is called after thread_get_priority() when a thread holds multiple locks and has multiple threads trying to donate priority. Both threads may think that the current priority is lower than it actually is, because another may have updated the priority. We would fix this by acquiring a lock before getting the current priority and then setting the priority.
+There is a potential race when the thread_set_priority() is called after thread_get_priority() when a thread holds multiple locks and has multiple threads trying to donate priority.
+Both threads may think that the current priority is lower than it actually is, because another may have updated the priority.
+We would fix this by acquiring a lock before getting the current priority and then setting the priority.
 
 
 ---- RATIONALE ----
 
 >> B7: Why did you choose this design?  In what ways is it superior to
 >> another design you considered?
-In choosing our design, we considered memory limitations and time complexity of the data structure algorithms. In the end, we decided on storing all the information in the thread stub. Alternatives we considered were storing the lists of donators in a hash table or tree in the kernel as a global struct. Making this information global may be bad for modularity reasons, because it might clutter the list of global variables. This implementation does not take up too much memory in the thread stub, and allows us to access children immediately instead of having to search through a tree or lookup in a hashtable. Also, it is much simpler and more natural of a design than the other structures. The algorithm to iterate through children arises naturally from our structure.
+In choosing our design, we considered memory limitations and time complexity of the data structure algorithms.
+In the end, we decided on storing all the information in the thread stub.
+Alternatives we considered were storing the lists of donators in a hash table or tree in the kernel as a global struct.
+Making this information global may be bad for modularity reasons, because it might clutter the list of global variables.
+This implementation does not take up too much memory in the thread stub, and allows us to access children immediately instead of having to search through a tree or lookup in a hashtable.
+Also, it is much simpler and more natural of a design than the other structures.
+The algorithm to iterate through children arises naturally from our structure.
 
               ADVANCED SCHEDULER
               ==================
@@ -190,11 +222,20 @@ ticks   A   B   C   A   B   C   to run
 >> C3: Did any ambiguities in the scheduler specification make values
 >> in the table uncertain?  If so, what rule did you use to resolve
 >> them?  Does this match the behavior of your scheduler?
-We picked by the least recently executed thread when the priorities were identical. This matches the behavior of our scheduler through the following idea. We would list_push_back() to insert a thread back into the ready queue, so the most recently run thread (elem) gets inserted into the ready queue at the back of those with the same priority. The method, list_max(), gets the maximum that appears earliest in the list. A list_remove() would remove that thread from the queue to be run. This is round robin for threads with the same priority.
+We picked by the least recently executed thread when the priorities were identical.
+This matches the behavior of our scheduler through the following idea.
+We would list_push_back() to insert a thread back into the ready queue, so the most recently run thread (elem) gets inserted into the ready queue at the back of those with the same priority.
+The method, list_max(), gets the maximum that appears earliest in the list.
+A list_remove() would remove that thread from the queue to be run.
+This is round robin for threads with the same priority.
 
 >> C4: How is the way you divided the cost of scheduling between code
 >> inside and outside interrupt context likely to affect performance?
-Everything having to do with incrementing recent_cpu and calculating priority, recent_cpu, and load_avg happens inside the timer interrupt, because these operations must be run at specific times. Adding and multiplication is not very CPU intensive. Performance may be bad when there are many threads for which there are values to increment and recalculate. The handling of popping threads from the ready queue and pushing threads into the ready queue is outside of the interrupt handler. Popping the highest priority thread from the queue would take O(n) time where n is the number of threads in the ready queue.
+Everything having to do with incrementing recent_cpu and calculating priority, recent_cpu, and load_avg happens inside the timer interrupt, because these operations must be run at specific times.
+Adding and multiplication is not very CPU intensive.
+Performance may be bad when there are many threads for which there are values to increment and recalculate.
+The handling of popping threads from the ready queue and pushing threads into the ready queue is outside of the interrupt handler.
+Popping the highest priority thread from the queue would take O(n) time where n is the number of threads in the ready queue.
 
 ---- RATIONALE ----
 
@@ -209,4 +250,7 @@ No sorting methods needed for ready queue.
 Disadvantages:
 Calculating priority and coefficients may slow down processes when there are many threads for which to calculated and increment values.
 
-Having a sorted ready queue may make the process of selecting the next thread faster. Inserting elements would take O(logn) time when the queue is sorted and popping the maximum would take O(1) time. Right now it takes O(n) time to pop the maximum, but O(1) time to insert. When priorities are recalculated, the queue may need to be resorted.
+Having a sorted ready queue may make the process of selecting the next thread faster.
+Inserting elements would take O(logn) time when the queue is sorted and popping the maximum would take O(1) time.
+Right now it takes O(n) time to pop the maximum, but O(1) time to insert.
+When priorities are recalculated, the queue may need to be resorted.
