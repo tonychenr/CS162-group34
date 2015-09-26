@@ -29,6 +29,7 @@ static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
+static struct lock intr_lock;
 
 /* Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
@@ -37,6 +38,7 @@ timer_init (void)
 {
   pit_configure_channel (0, 2, TIMER_FREQ);
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
+  lock_init(&intr_lock);
 }
 
 /* Calibrates loops_per_tick, used to implement brief delays. */
@@ -89,11 +91,13 @@ timer_elapsed (int64_t then)
 void
 timer_sleep (int64_t ticks) 
 {
-  int64_t start = timer_ticks ();
-
   ASSERT (intr_get_level () == INTR_ON);
-  while (timer_elapsed (start) < ticks) 
-    thread_yield ();
+  lock_acquire(&intr_lock);
+  intr_disable();
+  thread_current()->sleep_ticks = ticks;
+  thread_block();
+  intr_enable();
+  lock_release(&intr_lock);
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -166,12 +170,26 @@ timer_print_stats (void)
   printf ("Timer: %"PRId64" ticks\n", timer_ticks ());
 }
 
+
+static void thread_sleep_tick_wake (struct thread *t, void *aux)
+{
+  if (t->status == THREAD_BLOCKED) {
+    if (t->sleep_ticks > 0) {
+      t->sleep_ticks--;
+    }
+    if (t->sleep_ticks == 0) {
+      thread_unblock(t);
+    }
+  }
+}
+
 /* Timer interrupt handler. */
 static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
   thread_tick ();
+  thread_foreach(thread_sleep_tick_wake, NULL);
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
