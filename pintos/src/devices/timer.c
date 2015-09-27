@@ -92,12 +92,12 @@ void
 timer_sleep (int64_t ticks) 
 {
   ASSERT (intr_get_level () == INTR_ON);
-  lock_acquire(&intr_lock);
-  intr_disable();
-  thread_current()->sleep_ticks = ticks;
-  thread_block();
-  intr_enable();
-  lock_release(&intr_lock);
+  enum intr_level old_level = intr_disable ();
+  if (ticks > 0) {
+      thread_current()->sleep_ticks = ticks;
+      thread_block();
+  }
+  intr_set_level(old_level);
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -176,9 +176,9 @@ static void thread_sleep_tick_wake (struct thread *t, void *aux)
   if (t->status == THREAD_BLOCKED) {
     if (t->sleep_ticks > 0) {
       t->sleep_ticks--;
-    }
-    if (t->sleep_ticks == 0) {
+      if (t->sleep_ticks == 0) {
       thread_unblock(t);
+      }
     }
   }
 }
