@@ -158,6 +158,9 @@ bool list_empty (struct list *);
 
 /* Miscellaneous. */
 void list_reverse (struct list *);
+
+bool less_priority (struct list_elem *max, struct list_elem *e, void *aux);
+
 
 /* Compares the value of two list elements A and B, given
    auxiliary data AUX.  Returns true if A is less than B, or
