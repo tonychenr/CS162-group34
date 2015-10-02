@@ -159,7 +159,7 @@ bool list_empty (struct list *);
 /* Miscellaneous. */
 void list_reverse (struct list *);
 
-bool less_priority (struct list_elem *max, struct list_elem *e, void *aux);
+bool less_priority (const struct list_elem *max, const struct list_elem *e, void *aux);
 
 
 /* Compares the value of two list elements A and B, given

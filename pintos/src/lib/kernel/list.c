@@ -485,7 +485,7 @@ list_unique (struct list *list, struct list *duplicates,
       elem = next;
 }
 
-bool less_priority (struct list_elem *max, struct list_elem *e, void *aux)
+bool less_priority (const struct list_elem *max, const struct list_elem *e, void *aux)
 {
   return list_entry(max, struct thread, elem)->priority < list_entry(e, struct thread, elem)->priority;
 }

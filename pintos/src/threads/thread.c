@@ -339,7 +339,7 @@ void
 thread_set_priority (int new_priority) 
 {
   thread_current ()->priority = new_priority;
-  struct thread max_thread = list_entry(list_max(&ready_list, less_priority, NULL), struct thread, elem);
+  struct thread *max_thread = list_entry(list_max(&ready_list, less_priority, NULL), struct thread, elem);
   int max_priority = max_thread->priority;
   if (new_priority < max_priority) {
     thread_yield();
@@ -499,12 +499,13 @@ alloc_frame (struct thread *t, size_t size)
 static struct thread *
 next_thread_to_run (void) 
 {
-  if (list_empty (&ready_list))
+  if (list_empty (&ready_list)) {
     return idle_thread;
-  else
-    struct thread max_thread = list_entry(list_max(&ready_list, less_priority, NULL), struct thread, elem);
-    list_remove(max_thread->elem);
+  } else {
+    struct thread *max_thread = list_entry(list_max(&ready_list, less_priority, NULL), struct thread, elem);
+    list_remove(&(max_thread->elem));
     return max_thread;
+  }
 }
 
 /* Completes a thread switch by activating the new thread's page
