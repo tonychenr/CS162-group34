@@ -204,6 +204,17 @@ thread_create (const char *name, int priority,
   return tid;
 }
 
+/* Compares priorities of thread corresponding to list_elem max and thread corresponding to list_elem e.
+   Used as list_less_func in list_max() to get max priority thread in list */
+bool less_priority (const struct list_elem *max, const struct list_elem *e, void *aux)
+{
+  struct thread *max_thread = list_entry(max, struct thread, elem);
+  int max_priority = max_thread->priority;
+  struct thread *curr_thread = list_entry(e, struct thread, elem);
+  int curr_priority = curr_thread->priority;
+  return max_priority < curr_priority;
+}
+
 /* Puts the current thread to sleep.  It will not be scheduled
    again until awoken by thread_unblock().
 
@@ -503,7 +514,7 @@ next_thread_to_run (void)
     return idle_thread;
   } else {
     struct thread *max_thread = list_entry(list_max(&ready_list, less_priority, NULL), struct thread, elem);
-    list_remove(&(max_thread->elem));
+    list_remove(&max_thread->elem);
     return max_thread;
   }
 }
