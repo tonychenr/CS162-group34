@@ -200,6 +200,14 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
+  struct thread *max_thread = NULL;
+  if (!list_empty(&ready_list)) {
+    max_thread = list_entry(list_max(&ready_list, less_priority, NULL),
+                            struct thread, elem);
+  }
+  if (max_thread != NULL && thread_current()->priority < max_thread->priority) {
+    thread_yield();
+  }
 
   return tid;
 }
@@ -251,9 +259,6 @@ thread_unblock (struct thread *t)
   list_push_back (&ready_list, &t->elem);
   t->status = THREAD_READY;
   intr_set_level (old_level);
-  if (thread_current()->priority < t->priority) {
-    thread_yield();
-  }
 }
 
 /* Returns the name of the running thread. */
@@ -482,7 +487,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
-  t->sleep_ticks = 0;
+
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
