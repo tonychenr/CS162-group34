@@ -11,6 +11,7 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "threads/fixed-point.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -59,6 +60,8 @@ static unsigned thread_ticks;   /* # of timer ticks since last yield. */
    Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
 
+int load_avg;
+
 static void kernel_thread (thread_func *, void *aux);
 
 static void idle (void *aux UNUSED);
@@ -92,9 +95,17 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
+  if (thread_mlfqs == true) {
+    load_avg = 0;
+  }
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
+  if (thread_mlfqs == true) {
+    initial_thread->nice = 0;
+    initial_thread->recent_cpu = 0;
+    initial_thread->priority = PRI_MAX − (t->recent_cpu / 4) − (t->nice * 2);
+  }
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
@@ -354,11 +365,13 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  thread_current ()->priority = new_priority;
-  struct thread *max_thread = list_entry(list_max(&ready_list, less_priority, NULL), struct thread, elem);
-  int max_priority = max_thread->priority;
-  if (new_priority < max_priority) {
-    thread_yield();
+  if (thread_mlfqs == false) {
+    thread_current ()->priority = new_priority;
+    struct thread *max_thread = list_entry(list_max(&ready_list, less_priority, NULL), struct thread, elem);
+    int max_priority = max_thread->priority;
+    if (new_priority < max_priority) {
+      thread_yield();
+    }
   }
 }
 
@@ -371,33 +384,38 @@ thread_get_priority (void)
 
 /* Sets the current thread's nice value to NICE. */
 void
-thread_set_nice (int nice UNUSED) 
+thread_set_nice (int nice) 
 {
-  /* Not yet implemented. */
+  if (thread_mlfqs == true) {
+    thread_current()->nice = nice;
+  }
 }
 
 /* Returns the current thread's nice value. */
 int
 thread_get_nice (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  if (thread_mlfqs == true) {
+    return thread_current()->nice;
+  }
 }
 
 /* Returns 100 times the system load average. */
 int
 thread_get_load_avg (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  if (thread_mlfqs == true) {
+    return fix_round(fix_mul(fix_int(100), fix_int(load_avg)));
+  }
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  if (thread_mlfqs == true) {
+    return fix_round(fix_mul(fix_int(100), fix_int(thread_current()->recent_cpu)));
+  }
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
@@ -485,9 +503,15 @@ init_thread (struct thread *t, const char *name, int priority)
   t->status = THREAD_BLOCKED;
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
-  t->priority = priority;
-  t->magic = THREAD_MAGIC;
 
+  t->magic = THREAD_MAGIC;
+  if (thread_mlfqs == true) {
+    t->recent_cpu = 0;
+    t->nice = thread_get_nice();
+    t->priority = PRI_MAX − (t->recent_cpu / 4) − (t->nice * 2);
+  } else {
+    t->priority = priority;
+  }
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);

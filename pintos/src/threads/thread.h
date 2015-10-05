@@ -94,6 +94,8 @@ struct thread
     int64_t wake_time;                    /* Time for the thread to wake up after timer_sleep*/
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
+    int nice;                           /* Nice value of thread */
+    int recent_cpu;                     /* Amount of CPU time thread has received recently*/
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
