@@ -25,6 +25,8 @@
    that are ready to run but not actually running. */
 static struct list ready_list;
 
+static struct list ready_queues[PRI_MAX + 1];
+
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
 static struct list all_list;
@@ -93,7 +95,13 @@ thread_init (void)
   ASSERT (intr_get_level () == INTR_OFF);
 
   lock_init (&tid_lock);
-  list_init (&ready_list);
+  if (thread_mlfqs == true) {
+    for (int i = 0; i < PRI_MAX + 1; i++) {
+      list_init(&ready_queues[i]);
+    }
+  } else {
+    list_init (&ready_list);
+  }
   list_init (&all_list);
   if (thread_mlfqs == true) {
     load_avg = 0;
@@ -211,14 +219,24 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
-  struct thread *max_thread = NULL;
-  if (!list_empty(&ready_list)) {
-    max_thread = list_entry(list_max(&ready_list, less_priority, NULL),
-                            struct thread, elem);
+  if (thread_mlfqs == true) {
+    for (int i = thread_current()->priority + 1; i < PRI_MAX + 1; i++) {
+      if (!list_empty(ready_queues[i])) {
+        thread_yield();
+        break;
+      }
+    }
+  } else {
+    struct thread *max_thread = NULL;
+    if (!list_empty(&ready_list)) {
+      max_thread = list_entry(list_max(&ready_list, less_priority, NULL),
+                              struct thread, elem);
+    }
+    if (max_thread != NULL && thread_current()->priority < max_thread->priority) {
+      thread_yield();
+    }
   }
-  if (max_thread != NULL && thread_current()->priority < max_thread->priority) {
-    thread_yield();
-  }
+
 
   return tid;
 }
@@ -267,7 +285,11 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+  if (thread_mlfqs == true) {
+    list_push_back(&ready_queues[t->priority], &t->elem);
+  } else {
+    list_push_back (&ready_list, &t->elem);
+  }
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -337,8 +359,13 @@ thread_yield (void)
   ASSERT (!intr_context ());
 
   old_level = intr_disable ();
-  if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
+  if (cur != idle_thread) {
+    if (thread_mlfqs == true) {
+      list_push_back(&ready_queues[cur->priority], &cur->elem);
+    } else {
+      list_push_back (&ready_list, &cur->elem);
+    }
+  }
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -539,12 +566,20 @@ alloc_frame (struct thread *t, size_t size)
 static struct thread *
 next_thread_to_run (void) 
 {
-  if (list_empty (&ready_list)) {
-    return idle_thread;
+  if (thread_mlfqs == true) {
+    for (int i = PRI_MAX; i >= PRI_MIN; i--) {
+      if (!list_empty(&ready_queues[i])) {
+        return list_entry(list_pop_front(&ready_queues[i]), struct thread, elem);
+      }
+    }
   } else {
-    struct thread *max_thread = list_entry(list_max(&ready_list, less_priority, NULL), struct thread, elem);
-    list_remove(&max_thread->elem);
-    return max_thread;
+    if (list_empty (&ready_list)) {
+      return idle_thread;
+    } else {
+      struct thread *max_thread = list_entry(list_max(&ready_list, less_priority, NULL), struct thread, elem);
+      list_remove(&max_thread->elem);
+      return max_thread;
+    }
   }
 }
 
