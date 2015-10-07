@@ -95,7 +95,7 @@ struct thread
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
     int nice;                           /* Nice value of thread */
-    int recent_cpu;                     /* Amount of CPU time thread has received recently*/
+    fixed_point_t recent_cpu;                     /* Amount of CPU time thread has received recently*/
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
@@ -114,6 +114,8 @@ extern bool thread_mlfqs;
 void thread_init (void);
 void thread_start (void);
 
+void recalculate_recent_cpu (struct thread *t, void *aux);
+void calc_priority(struct thread *t, void *aux);
 void thread_tick (void);
 void thread_print_stats (void);
 

@@ -309,7 +309,7 @@ cond_wait (struct condition *cond, struct lock *lock)
 }
 
 /* Function passed into list_max() to calculate the maximum priority semaphore (thread) waiting on this condition */
-bool less_priority_sema (const struct list_elem *max, const struct list_elem *e, void *aux) {
+bool less_priority_sema (const struct list_elem *max, const struct list_elem *e, void *aux UNUSED) {
   struct semaphore *max_sema = &list_entry(max, struct semaphore_elem, elem)->semaphore;
   struct semaphore *curr_sema = &list_entry(e, struct semaphore_elem, elem)->semaphore;
   if (!list_empty(&max_sema->waiters) && !list_empty(&curr_sema->waiters)) {
