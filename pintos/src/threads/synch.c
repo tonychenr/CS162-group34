@@ -114,13 +114,16 @@ sema_up (struct semaphore *sema)
 
   old_level = intr_disable ();
   struct thread *max_thread = NULL;
+  struct list_elem *max_elem;
   if (!list_empty (&sema->waiters)) {
-    max_thread = list_entry(list_max(&sema->waiters, less_priority, NULL),
-                            struct thread, elem);
+    max_elem = list_max(&sema->waiters, less_priority, NULL);
+    max_thread = list_entry(max_elem, struct thread, elem);
     list_remove(&max_thread->elem);
     thread_unblock (max_thread);
   }
   sema->value++;
+
+  intr_set_level (old_level);
   if (thread_mlfqs == false && max_thread != NULL) {
     struct thread *wait_holder = max_thread->wait_holder;
     struct lock *wait_lock = max_thread->wait_lock;
@@ -139,8 +142,8 @@ sema_up (struct semaphore *sema)
       }
 
       list_remove(&max_thread->donate_elem);
-      struct thread *next_max = list_entry(list_max(&wait_holder->donators, less_priority, NULL), 
-                                           struct thread, donate_elem);
+      max_elem = list_max(&wait_holder->donators, less_priority, NULL);
+      struct thread *next_max = list_entry(max_elem, struct thread, donate_elem);
       if (list_empty(&wait_holder->donators)) {
         wait_holder->priority = wait_holder->original_priority;
         wait_holder->received_donation = false;
@@ -153,8 +156,6 @@ sema_up (struct semaphore *sema)
       max_thread->wait_holder = NULL;
     }
   }
-  intr_set_level (old_level);
-
   if (max_thread != NULL && thread_current()->priority < max_thread->priority) {
     thread_yield();
   }
@@ -280,22 +281,6 @@ lock_try_acquire (struct lock *lock)
   return success;
 }
 
-// bool less_lock_priority (const struct list_elem *max, const struct list_elem *e, void *aux)
-// {
-//   struct thread *max_donator = list_entry(max, struct thread, donate_elem);
-//   int max_priority = max_donator->priority;
-//   struct thread *curr_donator = list_entry(e, struct thread, donate_elem);
-//   int curr_priority = curr_donator->priority;
-//   if (curr_donator->wait_lock == aux) {
-//     if (max_donator->wait_lock == aux) {
-//       return max_priority < curr_priority;
-//     }
-//     return true;
-//   } else {
-//     return false;
-//   }
-// }
-
 /* Releases LOCK, which must be owned by the current thread.
 
    An interrupt handler cannot acquire a lock, so it does not
@@ -384,10 +369,13 @@ bool less_priority_sema (const struct list_elem *max, const struct list_elem *e,
   struct semaphore *max_sema = &list_entry(max, struct semaphore_elem, elem)->semaphore;
   struct semaphore *curr_sema = &list_entry(e, struct semaphore_elem, elem)->semaphore;
   if (!list_empty(&max_sema->waiters) && !list_empty(&curr_sema->waiters)) {
-    struct thread *max_thread = list_entry(list_max(&max_sema->waiters, less_priority, NULL), struct thread, elem);
+    struct list_elem *max_elem;
+    max_elem = list_max(&max_sema->waiters, less_priority, NULL);
+    struct thread *max_thread = list_entry(max_elem, struct thread, elem);
     int max_priority = max_thread->priority;
-  
-    struct thread *curr_thread = list_entry(list_max(&curr_sema->waiters, less_priority, NULL), struct thread, elem);
+    
+    max_elem = list_max(&curr_sema->waiters, less_priority, NULL);
+    struct thread *curr_thread = list_entry(max_elem, struct thread, elem);
     int curr_priority = curr_thread->priority;
 
     return max_priority < curr_priority;
@@ -412,9 +400,11 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
   ASSERT (!intr_context ());
   ASSERT (lock_held_by_current_thread (lock));
 
+  struct list_elem *max_elem;
   struct semaphore_elem *max_priority_sema_elem;
   if (!list_empty (&cond->waiters)) {
-    max_priority_sema_elem = list_entry(list_max(&cond->waiters, less_priority_sema, NULL), struct semaphore_elem, elem);
+    max_elem = list_max(&cond->waiters, less_priority_sema, NULL);
+    max_priority_sema_elem = list_entry(max_elem, struct semaphore_elem, elem);
     list_remove(&max_priority_sema_elem->elem);
     sema_up (&max_priority_sema_elem->semaphore);
   }

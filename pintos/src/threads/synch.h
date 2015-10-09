@@ -27,9 +27,6 @@ struct lock
 void lock_init (struct lock *);
 void lock_acquire (struct lock *);
 bool lock_try_acquire (struct lock *);
-
-bool less_lock_priority (const struct list_elem *, const struct list_elem *, void *aux);
-
 void lock_release (struct lock *);
 bool lock_held_by_current_thread (const struct lock *);
 

@@ -107,9 +107,9 @@ struct thread
     int original_priority;              /* The original priority of this thread*/
     struct list donators;               /* List of threads that have donated to this thread*/
     struct thread *wait_holder;         /* A pointer to the thread that owns the lock this thread is waiting on; null if it’s not waiting for a lock */
-    struct list_elem donate_elem;      /* A pointer to the list_elem of wait_holder->donators that corresponds to the lock this thread is waiting for*/
+    struct list_elem donate_elem;       /* A pointer to the list_elem of wait_holder->donators that corresponds to the lock this thread is waiting for*/
     struct lock *wait_lock;             /* Pointer to lock this thread waits on */
-    bool received_donation;
+    bool received_donation;             /* Boolean telling whether this thread has received a donation */
   };
 
 /* If false (default), use round-robin scheduler.

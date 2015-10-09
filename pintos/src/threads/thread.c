@@ -134,8 +134,10 @@ thread_start (void)
 }
 
 void recalculate_recent_cpu (struct thread *t, void *aux UNUSED) {
-  t->recent_cpu = fix_add(fix_mul(fix_div(fix_mul(fix_int(2), load_avg), 
-                                          fix_add(fix_mul(fix_int(2), load_avg), fix_int(1))), t->recent_cpu), fix_int(t->nice));
+  fixed_point_t first_mul = fix_mul(fix_int(2), load_avg);
+  fixed_point_t first_div = fix_div(first_mul, fix_add(fix_mul(fix_int(2), load_avg), fix_int(1)));
+  fixed_point_t first = fix_mul(first_div, t->recent_cpu);
+  t->recent_cpu = fix_add(first, fix_int(t->nice));
 }
 
 void calc_priority(struct thread *t, void *aux UNUSED) {
@@ -414,7 +416,8 @@ thread_set_priority (int new_priority)
     if (thread_current()->received_donation == false) {
       thread_current ()->priority = new_priority;
       if (!list_empty(&ready_list)) {
-        struct thread *max_thread = list_entry(list_max(&ready_list, less_priority, NULL), struct thread, elem);
+        struct list_elem* max_elem = list_max(&ready_list, less_priority, NULL);
+        struct thread *max_thread = list_entry(max_elem, struct thread, elem);
         int max_priority = max_thread->priority;
         if (new_priority < max_priority) {
           thread_yield();
@@ -629,7 +632,8 @@ next_thread_to_run (void)
     if (list_empty (&ready_list)) {
       return idle_thread;
     } else {
-      struct thread *max_thread = list_entry(list_max(&ready_list, less_priority, NULL), struct thread, elem);
+      struct list_elem *max_elem = list_max(&ready_list, less_priority, NULL);
+      struct thread *max_thread = list_entry(max_elem, struct thread, elem);
       list_remove(&max_thread->elem);
       return max_thread;
     }
