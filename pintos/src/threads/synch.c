@@ -124,6 +124,7 @@ sema_up (struct semaphore *sema)
   sema->value++;
 
   intr_set_level (old_level);
+
   if (thread_mlfqs == false && max_thread != NULL) {
     struct thread *wait_holder = max_thread->wait_holder;
     struct lock *wait_lock = max_thread->wait_lock;
@@ -152,14 +153,6 @@ sema_up (struct semaphore *sema)
       } else {
         wait_holder->priority = next_max->priority;
       }
-      struct thread *donatee;
-      for (donatee = wait_holder; donatee != NULL; donatee = donatee->wait_holder) {
-        if (donatee->priority < wait_holder->priority) {
-          donatee->priority = wait_holder->priority;
-        }
-      }
-      max_thread->wait_lock = NULL;
-      max_thread->wait_holder = NULL;
     }
   }
   if (max_thread != NULL && thread_current()->priority < max_thread->priority) {

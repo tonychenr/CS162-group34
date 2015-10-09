@@ -413,8 +413,9 @@ void
 thread_set_priority (int new_priority) 
 {
   if (thread_mlfqs == false) {
+    thread_current()->original_priority = new_priority;
     if (thread_current()->received_donation == false) {
-      thread_current ()->priority = new_priority;
+      thread_current()->priority = new_priority;
       if (!list_empty(&ready_list)) {
         struct list_elem* max_elem = list_max(&ready_list, less_priority, NULL);
         struct thread *max_thread = list_entry(max_elem, struct thread, elem);
@@ -423,12 +424,8 @@ thread_set_priority (int new_priority)
           thread_yield();
         }
       }
-    } else {
-      if (new_priority < thread_current()->priority) {
-        thread_current()->original_priority = new_priority;
-      } else {
-        thread_current()->priority = new_priority;
-      }
+    } else if (new_priority > thread_current()->priority) {
+      thread_current()->priority = new_priority;
     }
   }
 }
