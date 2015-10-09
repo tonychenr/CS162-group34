@@ -91,11 +91,11 @@ struct thread
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
-    int64_t wake_time;                    /* Time for the thread to wake up after timer_sleep*/
+    int64_t wake_time;                  /* Time for the thread to wake up after timer_sleep*/
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
     int nice;                           /* Nice value of thread */
-    fixed_point_t recent_cpu;                     /* Amount of CPU time thread has received recently*/
+    fixed_point_t recent_cpu;           /* Amount of CPU time thread has received recently*/
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
@@ -104,6 +104,18 @@ struct thread
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
+    int original_priority;              /* The original priority of this thread*/
+    struct list donators;               /* List of threads that have donated to this thread*/
+    struct thread *wait_holder;         /* A pointer to the thread that owns the lock this thread is waiting on; null if it’s not waiting for a lock */
+    struct list_elem *donate_elem;      /* A pointer to the list_elem of wait_holder->donators that corresponds to the lock this thread is waiting for*/
+  };
+
+
+struct donator_elem                     /* This struct defines an element in the thread.donators list*/
+  {
+    struct lock* donator_lock;          /* Pointer to the lock this donator is waiting on*/
+    struct list_elem elem;              /* list elem in list*/
+    int priority;                       /* Priority donated by this donator*/
   };
 
 /* If false (default), use round-robin scheduler.

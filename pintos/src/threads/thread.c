@@ -576,6 +576,9 @@ init_thread (struct thread *t, const char *name, int priority)
     }
   } else {
     t->priority = priority;
+    t->wait_holder = NULL;
+    list_init(&t->donators);
+    t->original_priority = priority;
   }
 
   old_level = intr_disable ();
