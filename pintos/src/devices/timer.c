@@ -87,7 +87,7 @@ timer_elapsed (int64_t then)
 }
 
 /* Used by list_insert_ordered() to insert items into sleep_list by most recent thread wake_time */
-static bool less_sleep (const struct list_elem *elem, const struct list_elem *e, void *aux)
+static bool less_sleep (const struct list_elem *elem, const struct list_elem *e, void *aux UNUSED)
 {
   struct thread *elem_thread = list_entry(elem, struct thread, elem);
   int elem_wake_time = elem_thread->wake_time;

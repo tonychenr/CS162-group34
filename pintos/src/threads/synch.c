@@ -122,6 +122,25 @@ sema_up (struct semaphore *sema)
   }
   sema->value++;
   intr_set_level (old_level);
+
+
+  if (thread_mlfqs == false && max_thread != NULL) {
+    struct thread *wait_holder = max_thread->wait_holder;
+    struct lock *wait_lock = max_thread->wait_lock;
+    if (wait_holder != NULL) {
+      list_remove(&max_thread->donate_elem);
+      if (list_empty(&wait_holder->donators)) {
+        wait_holder->priority = wait_holder->original_priority;
+        wait_holder->received_donation = false;
+      } else {
+        struct thread *next_max = list_entry(list_max(&wait_holder->donators, less_priority, NULL), 
+                                             struct thread, donate_elem);
+        wait_holder->priority = next_max->priority;
+      }
+      max_thread->wait_lock = NULL;
+      max_thread->wait_holder = NULL;
+    }
+  }
   if (max_thread != NULL && thread_current()->priority < max_thread->priority) {
     thread_yield();
   }
@@ -205,24 +224,24 @@ lock_acquire (struct lock *lock)
 
   if (thread_mlfqs == false) {
     struct thread* curr = thread_current();
-    struct thread* ptr = lock->holder;
-    if (ptr != NULL) {
-      curr->wait_holder = ptr;
-      struct donator_elem* delem;
-      delem->donator_lock = lock;
-      delem->priority = curr->priority;
-      list_push_back(&ptr->donators, &delem->elem);
-      curr->donate_elem = &delem->elem;
-      for (ptr = curr;ptr->wait_holder != NULL;ptr=ptr->wait_holder) {
-        struct thread* next = ptr->wait_holder;
-        if (next->priority < ptr->priority) next->priority = ptr->priority;
-        struct donator_elem* de = list_entry(next->donate_elem, struct donator_elem, elem);
-        if (de->priority < ptr->priority) de->priority = ptr->priority;
+    struct thread* lock_holder = lock->holder;
+    if (lock_holder != NULL) {
+      curr->wait_holder = lock_holder;
+      list_push_back(&lock_holder->donators, &curr->donate_elem);
+      lock_holder->received_donation = true;
+      curr->wait_lock = lock;
+
+      struct thread *donatee;
+      for (donatee = lock_holder; donatee != NULL; donatee = donatee->wait_holder) {
+        if (donatee->priority < curr->priority) {
+          donatee->priority = curr->priority;
+        }
       }
     }
   }
 
   sema_down (&lock->semaphore);
+
   lock->holder = thread_current ();
 
 }
@@ -247,14 +266,21 @@ lock_try_acquire (struct lock *lock)
   return success;
 }
 
-bool less_lock_priority (const struct list_elem *max, const struct list_elem *e, void *aux UNUSED)
-{
-  struct donator_elem *max_delem = list_entry(max, struct donator_elem, elem);
-  int max_priority = max_delem->priority;
-  struct donator_elem *curr_delem = list_entry(e, struct donator_elem, elem);
-  int curr_priority = curr_delem->priority;
-  return max_priority < curr_priority;
-}
+// bool less_lock_priority (const struct list_elem *max, const struct list_elem *e, void *aux)
+// {
+//   struct thread *max_donator = list_entry(max, struct thread, donate_elem);
+//   int max_priority = max_donator->priority;
+//   struct thread *curr_donator = list_entry(e, struct thread, donate_elem);
+//   int curr_priority = curr_donator->priority;
+//   if (curr_donator->wait_lock == aux) {
+//     if (max_donator->wait_lock == aux) {
+//       return max_priority < curr_priority;
+//     }
+//     return true;
+//   } else {
+//     return false;
+//   }
+// }
 
 /* Releases LOCK, which must be owned by the current thread.
 
@@ -268,41 +294,10 @@ lock_release (struct lock *lock)
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
 
-  if (thread_mlfqs == false) {
-    struct thread* holder = lock->holder;
-    struct list_elem* lock_elem = find_lock(holder,lock);
-    if (lock_elem != NULL) {
-      list_remove(lock_elem);
-      if (list_empty(&holder->donators)) {
-        holder->priority = holder->original_priority;
-      }
-      else {
-        struct donator_elem *max_delem = list_entry(list_max(&holder->donators, less_lock_priority, NULL), struct donator_elem, elem);
-        holder->priority = max_delem->priority;
-      }
-    }
-  }
   lock->holder = NULL;
   sema_up (&lock->semaphore);
 }
 
-
-
-struct list_elem* find_lock(struct thread *t, struct lock *lock) {
-  struct list *list = &t->donators;
-  struct list_elem *curr = list_begin (list);
-  if (curr != list_end (list)) 
-  {
-    if (list_entry(curr, struct donator_elem, elem)->donator_lock == lock)
-      return curr;
-    struct list_elem *e;
-    
-    for (e = list_next (curr); e != list_end (list); e = list_next (e))
-      if (list_entry(curr, struct donator_elem, elem)->donator_lock == lock)
-        return curr;
-  }
-  return NULL;
-}
 
 /* Returns true if the current thread holds LOCK, false
    otherwise.  (Note that testing whether some other thread holds

@@ -411,12 +411,20 @@ void
 thread_set_priority (int new_priority) 
 {
   if (thread_mlfqs == false) {
-    thread_current ()->priority = new_priority;
-    if (!list_empty(&ready_list)) {
-      struct thread *max_thread = list_entry(list_max(&ready_list, less_priority, NULL), struct thread, elem);
-      int max_priority = max_thread->priority;
-      if (new_priority < max_priority) {
-        thread_yield();
+    if (thread_current()->received_donation == false) {
+      thread_current ()->priority = new_priority;
+      if (!list_empty(&ready_list)) {
+        struct thread *max_thread = list_entry(list_max(&ready_list, less_priority, NULL), struct thread, elem);
+        int max_priority = max_thread->priority;
+        if (new_priority < max_priority) {
+          thread_yield();
+        }
+      }
+    } else {
+      if (new_priority < thread_current()->priority) {
+        thread_current()->original_priority = new_priority;
+      } else {
+        thread_current()->priority = new_priority;
       }
     }
   }
@@ -579,6 +587,8 @@ init_thread (struct thread *t, const char *name, int priority)
     t->wait_holder = NULL;
     list_init(&t->donators);
     t->original_priority = priority;
+    t->received_donation = false;
+    t->wait_lock = NULL;
   }
 
   old_level = intr_disable ();

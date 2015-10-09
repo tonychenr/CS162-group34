@@ -25,6 +25,7 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
+#define PRI_UNITIALIZED -1              /* Uninitialized priority */
 
 /* A kernel thread or user process.
 
@@ -107,15 +108,9 @@ struct thread
     int original_priority;              /* The original priority of this thread*/
     struct list donators;               /* List of threads that have donated to this thread*/
     struct thread *wait_holder;         /* A pointer to the thread that owns the lock this thread is waiting on; null if it’s not waiting for a lock */
-    struct list_elem *donate_elem;      /* A pointer to the list_elem of wait_holder->donators that corresponds to the lock this thread is waiting for*/
-  };
-
-
-struct donator_elem                     /* This struct defines an element in the thread.donators list*/
-  {
-    struct lock* donator_lock;          /* Pointer to the lock this donator is waiting on*/
-    struct list_elem elem;              /* list elem in list*/
-    int priority;                       /* Priority donated by this donator*/
+    struct list_elem donate_elem;      /* A pointer to the list_elem of wait_holder->donators that corresponds to the lock this thread is waiting for*/
+    struct lock *wait_lock;             /* Pointer to lock this thread waits on */
+    bool received_donation;
   };
 
 /* If false (default), use round-robin scheduler.
