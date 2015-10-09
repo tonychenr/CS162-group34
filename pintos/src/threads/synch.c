@@ -132,17 +132,18 @@ sema_up (struct semaphore *sema)
       struct thread *donator_thread;
       struct list_elem *e = list_begin(&wait_holder->donators);
       if (e != list_end (&wait_holder->donators)) {
-        for (; e != list_end (&wait_holder->donators); e = list_next (e)) {
+        while (e != list_end (&wait_holder->donators)) {
           donator_thread = list_entry(e, struct thread, donate_elem);
           if (donator_thread->wait_lock == wait_lock) {
             donator_thread->wait_holder = NULL;
-            list_remove(&donator_thread->donate_elem);
+            e = list_remove(e);
             donator_thread->wait_lock = NULL;
+          } else {
+            e = list_next (e);
           }
         }
       }
 
-      list_remove(&max_thread->donate_elem);
       max_elem = list_max(&wait_holder->donators, less_priority, NULL);
       struct thread *next_max = list_entry(max_elem, struct thread, donate_elem);
       if (list_empty(&wait_holder->donators)) {
