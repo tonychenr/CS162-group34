@@ -121,26 +121,40 @@ sema_up (struct semaphore *sema)
     thread_unblock (max_thread);
   }
   sema->value++;
-  intr_set_level (old_level);
-
-
   if (thread_mlfqs == false && max_thread != NULL) {
     struct thread *wait_holder = max_thread->wait_holder;
     struct lock *wait_lock = max_thread->wait_lock;
     if (wait_holder != NULL) {
+      struct thread *donator_thread;
+      struct list_elem *e = list_begin(&wait_holder->donators);
+      if (e != list_end (&wait_holder->donators)) {
+        for (; e != list_end (&wait_holder->donators); e = list_next (e)) {
+          donator_thread = list_entry(e, struct thread, donate_elem);
+          if (donator_thread->wait_lock == wait_lock) {
+            donator_thread->wait_holder = NULL;
+            list_remove(&donator_thread->donate_elem);
+            donator_thread->wait_lock = NULL;
+          }
+        }
+      }
+
       list_remove(&max_thread->donate_elem);
+      struct thread *next_max = list_entry(list_max(&wait_holder->donators, less_priority, NULL), 
+                                           struct thread, donate_elem);
       if (list_empty(&wait_holder->donators)) {
         wait_holder->priority = wait_holder->original_priority;
         wait_holder->received_donation = false;
+      } else if (wait_holder->original_priority > next_max->priority) {
+        wait_holder->priority = wait_holder->original_priority;
       } else {
-        struct thread *next_max = list_entry(list_max(&wait_holder->donators, less_priority, NULL), 
-                                             struct thread, donate_elem);
         wait_holder->priority = next_max->priority;
       }
       max_thread->wait_lock = NULL;
       max_thread->wait_holder = NULL;
     }
   }
+  intr_set_level (old_level);
+
   if (max_thread != NULL && thread_current()->priority < max_thread->priority) {
     thread_yield();
   }
