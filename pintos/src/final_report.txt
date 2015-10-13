@@ -1,0 +1,54 @@
+***---Final Report---***
+
+***Group 34***
+Prudhvi Lokireddy <prudhvil@berkeley.edu>
+Tony Chen <sirtony@berkeley.edu>
+Khalid Shakur <khalidshakur@berkeley.edu>
+Nick Wissman <nickwissman@berkeley.edu>
+
+***Changes to Initial Design***
+---Timer---
+In timer.c:
+  static struct list sleep_list;     /*List of thread put to sleep by timer_sleep(). Ordered by lowest wake_time*/
+
+/* Used by list_insert_ordered() to insert items into sleep_list by most recent thread wake_time */
+
+In thread.h:
+  int64_t wake_time;                  /* Time for the thread to wake up after timer_sleep*/
+
+*We changed from storing sleep_ticks to storing wake_time in each thread. Instead of going through every thread and decrementing the ticks, we now pop from the front of the ordered list of sleeping threads. During each timer interrupt, the front of the sleep_list is checked to see if it is ready to wake up. The front is popped off and awakened until the wake_time of the elements is greater than the current time or until the list is empty.
+*This method is better because the timer interrupt is faster. Only the elements that need to wake up are checked. In the initial design, every thread was checked.
+
+---Priority Donation---
+In thread.h:
+int original_priority;              /* The original priority of this thread*/
+struct list donators;               /* List of threads that have donated to this thread*/
+struct thread *wait_holder;         /* A pointer to the thread that owns the lock this thread is waiting on; null if it’s not waiting for a lock */
+struct list_elem donate_elem;       /* A pointer to the list_elem of wait_holder->donators that corresponds to the lock this thread is waiting for*/
+struct lock *wait_lock;             /* Pointer to lock this thread waits on */
+bool received_donation;             /* Boolean telling whether this thread has received a donation */
+
+*The previous variables held in struct donate_elem have been moved into the struct thread. The algorithm is the same as discussed in the initial design. Everything that was in struct donator_elem has been moved into the thread struct, because it reduces complexity of managing another struct of donator_elem’s. The priority field of the former struct donator_elem no longer needs to be maintained, because it is now handled by the priority variable in the thread struct.
+*The race condition in set_priority is fixed by using a boolean received_donation. When true, thread_set_priority() sets the original_priority variable of a thread, instead of the priority variable. This way, the priority isn’t lowered when thread_set_priority() is called when a higher priority thread has donated to this thread. When false, original_priority and priority are updated together. When the list of donators is empty, the priority is set to original_priority.
+
+---Advanced Scheduler---
+No changes, except declaring recent_cpu and load_avg as fixed_point_t from type int.
+
+
+***Member Contribution***
+Tony - Implemented code for timer_sleep, priority donation, advanced scheduler. Refactored/improved timer_sleep and priority donation design.
+
+Prudhvi - Initial priority donation design, debugged priority donation code.
+
+Khalid - Helped write initial design doc, helped code advanced scheduler.
+
+Nick - Initial priority donation design, attempted implementation of priority donation.
+
+***What Went Well***
+GDB is a great tool. Timer sleep and Advanced scheduler was implemented smoothly. Our advanced scheduler value updates managed to work inside interrupt context.
+
+***Improvements***
+*We will plan out the schedule better.
+*We will define timelines for tasks more concretely. 
+*Those who need help in completing their tasks will be more proactive in communicating, so we don’t need to scramble last minute to get tasks completed.
+*Check facebook more often to keep updated with group messages.
