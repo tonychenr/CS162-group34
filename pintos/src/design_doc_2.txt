@@ -1,0 +1,140 @@
+CS 162
+Project 2: User Programs
+Design Document
+
+
+Fill in the following information:
+
+
+GSI: 
+Group Number: 
+Nick Wissman <nickwissman@berkeley.edu>
+Tony Chen <sirtony@berkeley.edu>
+Prudhvi Lokireddy <prudhvil@berkeley.edu>
+Khalid Shakur <khalidshakur@berkeley.edu>
+
+
+Preliminary Questions
+=====================
+
+1)  Please write down any miscellaneous comments or notes for your GSI.
+
+
+
+2)  Currently, process_wait tries to decrement a semaphore called temporary.  Explain why this implementation of process_wait wouldn’t work if the exec system call were implemented.
+
+
+If multiple processes make an exec syscall, each process will call process_wait for a different child. With only one semaphore, the system cannot keep track of which parent to wake up when each child loads its executable.
+
+3)  For checkpoint 1, you are implementing a dummy version of write that prints to stdout.  Describe, in two sentences or less, how a user could break the operating system exploiting this dummy version.
+
+William said to ignore this question on Piazza.
+
+4)  Briefly describe how the syscall interface works.  How does the operating system obtain the syscall arguments passed from userspace?
+
+The caller pushes the arguments onto the stack one by one in right-to-left order. Then the caller invokes the int instruction (int $0x30 in Pintos) and the operating system uses the information on the stack to execute the syscall.
+
+5)  In filesys.c, you’ll see various filesystem functions that work on struct file objects.  In all modern operating systems, these filesystems operations are abstracted away from userspace code; why would it be a bad idea to expose these operations to users?
+
+With direct access to these operations, malicious or poorly written user programs could make changes to files that cause problems for the whole system. For example, they could make absurdly large files or shut down the file system at inappropriate times. There could also be synchronization problems if every program called the operations directly.
+
+6)  Run pintos --gdb -v -k --qemu --filesys-size=2 -p tests/userprog/iloveos -a iloveos -- -q -f run iloveos, and use GDB to print the address of the priority field of idle thread.  Do this again; does the address of the priority field change?  We expect you to be able to use GDB comfortably throughout this project; if you’re struggling with this, we strongly encourage you to come to office hours.
+The priority field address does not change. 
+
+
+
+
+
+Process Syscalls
+================
+
+7)  Copy here the declaration of each new or changed `struct' or `struct' member, global or static variable, `typedef', or enumeration for implementing halt, exec, exit, and wait.  Briefly identify the purpose of each.
+
+/* Holds shared data across child and parent processes to synchronize processes */
+struct p_data {
+  struct list_elem /* Used to add to a list of p_data of child processes */
+  int exit; /* Exit code of child process */
+  tid_t child_tid; /* Thread ID of the child process */
+  struct semaphore sema; /* Initialized to 0. Downed when parent process waits on child */
+  int ref_count; /* Number of process using this process data. Can be 0, 1, or 2 */
+}
+
+struct thread {
+  struct list child_processes; /* A parent process can have many forked child processes */
+  struct *p_data parent_process; /* A process can have 1 parent process */
+  struct semaphore *sema; /* semaphore used in exec to prevent race condition */
+}
+
+
+8)  Briefly describe your planned implementation of the "wait" system call and how it interacts with process termination.
+
+When a parent process waits on a child, it downs the semaphore in the p_data struct shared between the two processes. This causes the parent to wait. When the child process exits, it calls sema_up. This allows the parent process to be put on the ready queue. The child process would set the exit code and lower the ref_count of the p_data. Finally, the child process it terminated.
+
+
+9)  The "exec" system call returns -1 if loading the new executable fails, so it cannot return before the new executable has completed loading.  How will your code ensure this?  How will the load success/failure status be passed back to the thread that calls "exec"?
+
+In exec, first, we create a new thread and load the executable in that thread by calling process_execute(). If the load was successful (process_execute returned a tid_t, not TID_ERROR), then we create a p_data to connect the child process and the parent process. The parent process now knows whether or not the call to exec was successful. The exec call can now return the tid of the new thread.  If process_execute() failed, then exec can return -1. Exec cannot return before its call to process_execute has finished.
+
+10)  Consider parent process P with child process C.  How do you ensure proper synchronization and avoid race conditions when P calls wait(C) before C exits?  After C exits?  How do you ensure that all resources are freed in each case?  How about when P terminates without waiting, before C exits?  After C exits?  Are there any special cases?
+
+When P calls wait(C), it will search through its list of child p_data. When C exits, it will always up the semaphore in p_data. When P calls wait before C has exited, it calls sema_down on the semaphore in p_data, causing P to sleep. If C is still running, it wouldn’t have called sema_up yet. When P tries to wait on C after C has exited, P will not sleep forever, because the semaphore has been upped when C exited. 
+
+If P waited on C, then P will free the p_data between P and C in the call to wait and return the necessary values before the p_data is freed. 
+
+If P doesn’t wait on C, the shared p_data is only freed when ref_count reaches 1 and the thread is exiting. If C finishes before P, ref_count will be decremented by 1, and it will not free the p_data data structure. As P exits, it will check the ref_count of each child p_data. If the ref_count is 1, P will free that p_data. Otherwise, it will decrement ref_count.
+
+ If P finishes before C without waiting, then the ref_count of each child’s p_data is lowered by 1. When each C exits, it will check the ref_count. If it is 1, C will free the p_data.
+
+There may be a special case where both parent and child are exiting at the same time. They both check the p_data ref_count and see that the value is 2, then both decrement and don’t free the data. To fix this, we should turn off interrupts to make sure only 1 thread exits at a time.
+
+11)  How are you planning to implement reading/writing user memory from the kernel and why did you decide to implement it in this way? 
+
+First, we verify if the pointer is valid using the methods in vaddr.h. If it is valid, then we dereference the pointer and read/write to that place in memory. If the pointer is invalid, then the kernel frees the memory and synchronization variables owned by this process and exits the process. We chose this implementation, because it is simpler to implement, and we are unsure about the speedup of the other method in the virtual machine.
+
+
+
+
+
+
+Argument Passing
+================
+
+12)  Copy here the declaration of each new or changed `struct' or `struct' member, global or static variable, `typedef', or enumeration for argument passing.  Briefly identify the purpose of each.  
+
+int argMax; //The maximum length of the command line arguments to prevent overflowing the stack.
+
+13)  Briefly describe your planned implementation for argument parsing.  How do you arrange for the elements of argv[] to be in the right order?  How do you avoid overflowing the stack page?
+
+First, check the length of the command line arguments to ensure that it will not overflow the stack. If that passes, use strtok_r() to tokenize the arguments to be put on the stack. Because the arguments must be placed in right-to-left order and strtok_r() tokenizes in left-to-right order, you must first push the argument tokens onto a temporary stack, then push them from there onto the real stack. This way, they will be put onto the temporary stack in left-to-right order by strtok_r() and taken off and put onto the real stack in right-to-left order.
+
+
+
+
+File Operation Syscalls
+=======================
+
+14)  Copy here the declaration of each new or changed `struct' or `struct' member, global or static variable, `typedef', or enumeration for the file operation syscalls.  Identify the purpose of each in 25 words or less.  
+
+struct file_struct
+{
+  int access; //keeps track of whether the process has no read, write, or no access to the file
+  char *name; //the name of the file for calls to filesys operators
+  hash_elem elem; //allows it to be stored in a hash table
+}
+
+struct hash file_hash; //uses file descriptors as keys and file_structs as values
+
+
+15)  Describe how file descriptors are associated with open files in your design.  Are file descriptors unique within the entire OS or just within a single process?
+
+When we open files, we create a new file descriptor and file_struct and store the file_struct in our hash table using the file descriptor as a key. Because file descriptors are created and stored entirely in the process struct, they are unique to a single process.
+
+16)  What advantages or disadvantages can you see to your design for file descriptors?
+
+Advantages: constant-time access to files using file descriptors
+
+Disadvantages: need to ensure our hash function is good
+
+17)  Suppose a system call causes a full page (4,096 bytes) of data to be copied from user space into the kernel.  What is the least and the greatest possible number of inspections of the page table (e.g. calls to pagedir_get_page()) that might result?  What about for a system call that only copies 2 bytes of data?
+
+In both cases, the minimum would be one and the maximum would be two. This is because both a full page and 2 bytes can fit in just one page, requiring only one inspection, but they can also be split between two pages, requiring two.
