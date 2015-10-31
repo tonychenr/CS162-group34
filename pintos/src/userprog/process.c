@@ -27,9 +27,23 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp);
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
    thread id, or TID_ERROR if the thread cannot be created. */
+
+// Represents the maximum number of bytes file_name can be
+int argMax = 4000
+
 tid_t
 process_execute (const char *file_name) 
 {
+  // Check to see if argument size is too large (-1 because 1st is the program)
+  if strlen(file_name) - 1 > 4000:
+    // Implement code here to properly stop program from exceuting
+  char * token, *saveptr1;
+  token = strtok_r(filename, " ", &saveptr1);
+  while (token != NULL) {
+    token = strtok(NULL, " ", &saveptr1);
+  }
+  passedArguements // The data structure with arguments
+  // End of parsing arguments, they all should be in a data structure at this point
   char *fn_copy;
   tid_t tid;
 
