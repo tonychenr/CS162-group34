@@ -261,3 +261,14 @@ invalidate_pagedir (uint32_t *pd)
       pagedir_activate (pd);
     } 
 }
+
+char pagedir_read_memory (uint32_t *pd, void *uaddr) {
+  if (!is_user_vaddr(uaddr)) {
+    return -1;
+  }else {
+    char* page = pagedir_get_page(pd, uaddr);
+    char result = (char) *page;
+    return result;
+  }
+
+}
