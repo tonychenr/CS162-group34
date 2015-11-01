@@ -27,12 +27,42 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp);
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
    thread id, or TID_ERROR if the thread cannot be created. */
+
+// Represents the maximum number of bytes file_name can be
+int argMax = 4000;
+
 tid_t
 process_execute (const char *file_name) 
 {
-  char *fn_copy;
-  tid_t tid;
+  char file_name_copy[strlen(file_name)];
+  strlcpy(file_name_copy, file_name, PGSIZE);
+  char * token, *saveptr1;
+  char *passedArguements[strlen(file_name)/2 + 1];
+  token = strtok_r(file_name_copy, " ", &saveptr1);
+  int counter = 0;
+  int arg_string_size = 0;
+  while (token != NULL) {
+    passedArguements[counter] = token;
+    token = strtok_r(NULL, " ", &saveptr1);
+    arg_string_size = arg_string_size + strlen(token);
+    counter++;
+  }
+  if (arg_string_size > 4000) {
+    // Too many arguments . . . handle accordingly
+    return TID_ERROR;
+  }
+  // Actually Pushing arguements onto the stack
+  int phys_base_offset = 0;
+  int i;
+  for (i = counter - 1; i >= 0; i--) {
+    memcpy((char *) passedArguements[i], PHYS_BASE - phys_base_offset, strlen(passedArguements[i]) + 1);
+    phys_base_offset++;
+  }
+  // Changed the file name to be just the first argument
+  file_name = passedArguements[0];
 
+  tid_t tid;
+  char *fn_copy;
   sema_init (&temporary, 0);
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
@@ -40,7 +70,6 @@ process_execute (const char *file_name)
   if (fn_copy == NULL)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
-
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
