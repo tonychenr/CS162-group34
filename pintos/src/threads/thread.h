@@ -105,13 +105,13 @@ struct thread
 
     struct list child_processes;        /* A parent process can have many forked child processes */
     struct p_data *parent_process;      /* A process can have 1 parent process */
-    struct semaphore *sema;             /* semaphore used in exec to prevent race condition */
+    struct semaphore sema;              /* semaphore used in exec to prevent race condition */
   };
 
 struct p_data {
   struct list_elem elem;                /*Used to add to a list of p_data child processes*/
-  int exit;                             /*Exit code of child process*/
-  tid_t child_tid;                      /*Thread ID of the child process*/
+  int exit_status;                      /*Exit code of child process*/
+  tid_t child_pid;                      /*Thread ID of the child process*/
   struct semaphore sema;                /*Initialized to 0. Downed when parent process waits on child*/
   int ref_count;                        /*Number of processes using this p_data. Can be 0,1, or 2*/
 };

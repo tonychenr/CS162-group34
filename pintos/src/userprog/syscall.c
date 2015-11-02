@@ -82,7 +82,10 @@ static void halt_handler (void) {
 }
 
 static void exit_handler (int status) {
-  printf("%s: exit(%d)\n", &thread_current ()->name, status);
+  struct p_data* parent = thread_current()->parent_process;
+  if (parent) {
+    parent->exit_status = status;
+  }
   thread_exit();
 }
 
@@ -91,7 +94,19 @@ static pid_t exec_handler (char *file) {
 }
 
 static int wait_handler (pid_t pid) {
-  return 0;
+  int is_valid_child = 0; //will be set to 1 if one of this thread's children are valid (direct and not already being waited on)
+  struct list_elem* e;
+  struct list childs = thread_current()->child_processes;
+  for (e = list_begin(&childs); e != list_end(&childs); e = list_next(e)) {
+    struct p_data* child = list_entry(e, struct p_data, elem);
+    if (child->child_pid == pid && !child->sema.value) {
+      is_valid_child = 1;
+      sema_down(&child->sema);
+      return child->exit_status;
+    }
+  }
+
+  if (!is_valid_child) return -1;
 }
 
 static bool create_handler (const char *file, unsigned initial_size) {
