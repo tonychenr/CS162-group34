@@ -11,10 +11,21 @@
 #include "filesys/file.h"
 #include "devices/shutdown.h"
 #include "lib/user/syscall.h"
+#include "lib/kernel/console.h"
+#include "devices/input.h"
+#include <list.h>
+
+struct file_struct {
+  struct file *sysFile;       /* Actual file struct in filesys/file.c */
+  int fd;                     /* File descriptor */
+  int ref_count;              /* Number of processes referencing this file */
+  bool removed;               /* True if a process removed this file. */
+  struct list_elem elem;      /* List elem for syscall file list */
+};
 
 static void syscall_handler (struct intr_frame *);
 static void halt_handler (void);
-static void exit_handler (struct intr_frame *f, int status);
+static void exit_handler (int status);
 static pid_t exec_handler (char *file);
 static int wait_handler (pid_t pid);
 static bool create_handler (const char *file, unsigned initial_size);
@@ -30,12 +41,26 @@ static int practice_handler (int i);
 
 struct lock file_lock; /* Lock accessing file system */
 int number_arguments[10]; /* number_arguments[syscall_number] gives the number of arguments for syscall */
+struct list file_structs; /* List of open files */
+
+static struct file_struct *get_file (int fd) {
+  struct list_elem *e;
+  struct file_struct *nextFile;
+  struct file_struct *matchedFile = NULL;
+  for (e = list_begin (&file_structs); e != list_end (&file_structs); e = list_next (e)) {
+    nextFile = list_entry(e, struct file_struct, elem);
+    if (nextFile->fd == fd)
+      break;
+  }
+  return matchedFile;
+}
 
 void
 syscall_init (void) 
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
   lock_init(&file_lock);
+  list_init(&file_structs);
   number_arguments[SYS_HALT] = 0;
   number_arguments[SYS_EXIT] = 1;
   number_arguments[SYS_EXEC] = 1;
@@ -56,8 +81,7 @@ static void halt_handler (void) {
   shutdown_power_off();
 }
 
-static void exit_handler (struct intr_frame *f, int status) {
-  f->eax = status;
+static void exit_handler (int status) {
   printf("%s: exit(%d)\n", &thread_current ()->name, status);
   thread_exit();
 }
@@ -91,7 +115,29 @@ static int read_handler (int fd, void *buffer, unsigned size) {
 }
 
 static int write_handler (int fd, const void *buffer, unsigned size) {
-  return 0;
+  if (!is_user_vaddr(buffer + size)) {
+    exit_handler(-1);
+  }
+
+  int num_bytes_written = 0;
+  lock_acquire(&file_lock);
+  if (fd == STDIN_FILENO) {
+    lock_release(&file_lock);
+    exit_handler(-1);
+  } else if (fd == STDOUT_FILENO) {
+    putbuf(buffer, size);
+    num_bytes_written = size;
+  } else {
+    struct file_struct *write_file = get_file(fd);
+    if (write_file == NULL) {
+      lock_release(&file_lock);
+      exit_handler(-1);
+    }
+    num_bytes_written = file_write(write_file->sysFile, buffer, size);
+  }
+
+  lock_release(&file_lock);
+  return num_bytes_written;
 }
 
 static void seek_handler (int fd, unsigned position) {
@@ -119,22 +165,26 @@ syscall_handler (struct intr_frame *f UNUSED)
   int args[3] = {0, 0, 0};
   int *physical_addr;
   if (!is_user_vaddr(addr)) {
-    exit_handler(f, -1);
+    f->eax = -1;
+    exit_handler(-1);
   } else {
     physical_addr = pagedir_get_page (pd, addr);
     if (physical_addr == NULL) {
-      exit_handler(f, -1);
+      f->eax = -1;
+      exit_handler(-1);
     }
     syscall_number = (int) *physical_addr;
     printf("System call number: %d\n", syscall_number);
     int i;
     for (i = 0; i < number_arguments[syscall_number]; i++) {
       if (!is_user_vaddr(addr + i)) {
-        exit_handler(f, -1);
+        f->eax = -1;
+        exit_handler(-1);
       } else {
         physical_addr = pagedir_get_page (pd, addr + i);
         if (physical_addr == NULL) {
-          exit_handler(f, -1);
+          f->eax = -1;
+          exit_handler(-1);
         } else {
           args[i] = (int) *physical_addr;
         }
@@ -144,7 +194,8 @@ syscall_handler (struct intr_frame *f UNUSED)
       case SYS_HALT:
         halt_handler ();
       case SYS_EXIT:
-        exit_handler(f, (int) args[0]);
+        f->eax = (int) args[0];
+        exit_handler((int) args[0]);
       case SYS_EXEC:
         f->eax = exec_handler ((char *) args[0]);
       case SYS_WAIT:
@@ -172,3 +223,4 @@ syscall_handler (struct intr_frame *f UNUSED)
     }
   }
 }
+
