@@ -34,35 +34,10 @@ int argMax = 4000;
 tid_t
 process_execute (const char *file_name) 
 {
-  char file_name_copy[strlen(file_name)];
-  strlcpy(file_name_copy, file_name, PGSIZE);
-  char * token, *saveptr1;
-  char *passedArguements[strlen(file_name)/2 + 1];
-  token = strtok_r(file_name_copy, " ", &saveptr1);
-  int counter = 0;
-  int arg_string_size = 0;
-  while (token != NULL) {
-    passedArguements[counter] = token;
-    token = strtok_r(NULL, " ", &saveptr1);
-    arg_string_size = arg_string_size + strlen(token);
-    counter++;
-  }
-  if (arg_string_size > 4000) {
-    // Too many arguments . . . handle accordingly
-    return TID_ERROR;
-  }
-  // Actually Pushing arguements onto the stack
-  int phys_base_offset = 0;
-  int i;
-  for (i = counter - 1; i >= 0; i--) {
-    memcpy((char *) passedArguements[i], PHYS_BASE - phys_base_offset, strlen(passedArguements[i]) + 1);
-    phys_base_offset++;
-  }
-  // Changed the file name to be just the first argument
-  file_name = passedArguements[0];
-
   tid_t tid;
   char *fn_copy;
+  char *fn_copy2;
+  char *saveptr;
   sema_init (&temporary, 0);
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
@@ -70,6 +45,14 @@ process_execute (const char *file_name)
   if (fn_copy == NULL)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
+
+  // Changed the file name to be just the first argument
+  fn_copy2 = palloc_get_page (0);
+  if (fn_copy2 == NULL)
+    return TID_ERROR;
+  strlcpy (fn_copy2, file_name, PGSIZE);
+  file_name = strtok_r(fn_copy2, " ", &saveptr);
+
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
@@ -97,6 +80,54 @@ start_process (void *file_name_)
   palloc_free_page (file_name);
   if (!success) 
     thread_exit ();
+
+  char file_name_copy[strlen(file_name) + 1];
+  strlcpy(file_name_copy, file_name, PGSIZE);
+  char * token, *saveptr1;
+  char *passedArguments[128];
+  token = strtok_r(file_name_copy, " ", &saveptr1);
+  int counter = 0;
+  int arg_string_size = 0;
+  void *initial_sp = if_.esp;
+  while (token != NULL) {
+    passedArguments[counter] = token;
+    arg_string_size += strlen(token);
+    counter++;
+    token = strtok_r(NULL, " ", &saveptr1);
+  }
+  if (arg_string_size > 4000) {
+    // Too many arguments . . . handle accordingly
+    thread_exit ();
+  }
+  /* Pushing arguments onto the stack */
+  int i;
+  for (i = counter - 1; i >= 0; i--) {
+    if_.esp -= (strlen(passedArguments[i]) + 1);
+    memcpy(if_.esp, passedArguments[i], strlen(passedArguments[i]) + 1);
+  }
+
+  /* Word align the stack */
+  if_.esp -= (int) if_.esp % 4;
+
+  /* Set argv[argc] = 0 and push on stack */
+  if_.esp -= 4;
+  *(char *) if_.esp = 0;
+
+  /* Push stack address of arguments onto the stack */
+  int curr_offset = 0;
+  for (i = counter - 1; i >= 0; i--) {
+    if_.esp -= 4;
+    *(char **) if_.esp = (char *) initial_sp - curr_offset;
+    curr_offset += strlen(passedArguments[i]) + 1;
+  }
+
+  /* Push argv onto stack then push argc onto stack then push fake return address on stack*/
+  if_.esp -= 4;
+  *(char **) if_.esp = if_.esp + 4;
+  if_.esp -= 4;
+  *(int *) if_.esp = counter;
+  if_.esp -= 4;
+  *(int *) if_.esp = 0;
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
