@@ -69,18 +69,6 @@ start_process (void *file_name_)
   struct intr_frame if_;
   bool success;
 
-  /* Initialize interrupt frame and load executable. */
-  memset (&if_, 0, sizeof if_);
-  if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
-  if_.cs = SEL_UCSEG;
-  if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (file_name, &if_.eip, &if_.esp);
-
-  /* If load failed, quit. */
-  palloc_free_page (file_name);
-  if (!success) 
-    thread_exit ();
-
   char file_name_copy[strlen(file_name) + 1];
   strlcpy(file_name_copy, file_name, PGSIZE);
   char * token, *saveptr1;
@@ -88,7 +76,6 @@ start_process (void *file_name_)
   token = strtok_r(file_name_copy, " ", &saveptr1);
   int counter = 0;
   int arg_string_size = 0;
-  void *initial_sp = if_.esp;
   while (token != NULL) {
     passedArguments[counter] = token;
     arg_string_size += strlen(token);
@@ -99,7 +86,20 @@ start_process (void *file_name_)
     // Too many arguments . . . handle accordingly
     thread_exit ();
   }
+  /* Initialize interrupt frame and load executable. */
+  memset (&if_, 0, sizeof if_);
+  if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
+  if_.cs = SEL_UCSEG;
+  if_.eflags = FLAG_IF | FLAG_MBS;
+  success = load (passedArguments[0], &if_.eip, &if_.esp);
+
+  /* If load failed, quit. */
+  palloc_free_page (file_name);
+  if (!success) 
+    thread_exit ();
+
   /* Pushing arguments onto the stack */
+  void *initial_sp = if_.esp;
   int i;
   for (i = counter - 1; i >= 0; i--) {
     if_.esp -= (strlen(passedArguments[i]) + 1);
@@ -107,7 +107,7 @@ start_process (void *file_name_)
   }
 
   /* Word align the stack */
-  if_.esp -= (int) if_.esp % 4;
+  if_.esp -= *(int *) if_.esp % 4;
 
   /* Set argv[argc] = 0 and push on stack */
   if_.esp -= 4;
@@ -117,8 +117,8 @@ start_process (void *file_name_)
   int curr_offset = 0;
   for (i = counter - 1; i >= 0; i--) {
     if_.esp -= 4;
-    *(char **) if_.esp = (char *) initial_sp - curr_offset;
     curr_offset += strlen(passedArguments[i]) + 1;
+    *(char ***) if_.esp = initial_sp - curr_offset;
   }
 
   /* Push argv onto stack then push argc onto stack then push fake return address on stack*/
@@ -502,7 +502,7 @@ setup_stack (void **esp)
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
-        *esp = PHYS_BASE - 12;
+        *esp = PHYS_BASE;
       else
         palloc_free_page (kpage);
     }

@@ -39,7 +39,7 @@ static unsigned tell_handler (int fd);
 static void close_handler (int fd);
 static int practice_handler (int i);
 
-struct lock file_lock; /* Lock accessing file system */
+static struct lock file_lock; /* Lock accessing file system */
 int number_arguments[10]; /* number_arguments[syscall_number] gives the number of arguments for syscall */
 struct list file_structs; /* List of open files */
 
@@ -159,34 +159,30 @@ static int practice_handler (int i) {
 static void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
-  uint32_t* addr = ((uint32_t*) f->esp);
+  uint32_t* args = ((uint32_t*) f->esp);
   uint32_t* pd = thread_current()->pagedir;
   int syscall_number;
-  int args[3] = {0, 0, 0};
   int *physical_addr;
-  if (!is_user_vaddr(addr)) {
+  if (!is_user_vaddr(args)) {
     f->eax = -1;
     exit_handler(-1);
   } else {
-    physical_addr = pagedir_get_page (pd, addr);
+    physical_addr = pagedir_get_page (pd, args);
     if (physical_addr == NULL) {
       f->eax = -1;
       exit_handler(-1);
     }
-    syscall_number = (int) *physical_addr;
-    printf("System call number: %d\n", syscall_number);
+    syscall_number = args[0];
     int i;
     for (i = 0; i < number_arguments[syscall_number]; i++) {
-      if (!is_user_vaddr(addr + i)) {
+      if (!is_user_vaddr(args + i)) {
         f->eax = -1;
         exit_handler(-1);
       } else {
-        physical_addr = pagedir_get_page (pd, addr + i);
+        physical_addr = pagedir_get_page (pd, args + i);
         if (physical_addr == NULL) {
           f->eax = -1;
           exit_handler(-1);
-        } else {
-          args[i] = (int) *physical_addr;
         }
       }
     }
@@ -194,32 +190,32 @@ syscall_handler (struct intr_frame *f UNUSED)
       case SYS_HALT:
         halt_handler ();
       case SYS_EXIT:
-        f->eax = (int) args[0];
-        exit_handler((int) args[0]);
+        f->eax = (int) args[1];
+        exit_handler((int) args[1]);
       case SYS_EXEC:
-        f->eax = exec_handler ((char *) args[0]);
+        f->eax = exec_handler ((char *) args[1]);
       case SYS_WAIT:
-        f->eax = wait_handler ((pid_t) args[0]);
+        f->eax = wait_handler ((pid_t) args[1]);
       case SYS_CREATE:
-        f->eax = create_handler ((char *) args[0], (unsigned) args[1]);
+        f->eax = create_handler ((char *) args[1], (unsigned) args[2]);
       case SYS_REMOVE:
-        f->eax = remove_handler ((char *) args[0]);
+        f->eax = remove_handler ((char *) args[1]);
       case SYS_OPEN:
-        f->eax = open_handler ((char *) args[0]);
+        f->eax = open_handler ((char *) args[1]);
       case SYS_FILESIZE:
-        f->eax = filesize_handler ((int) args[0]);
+        f->eax = filesize_handler ((int) args[1]);
       case SYS_READ:
-        f->eax = read_handler ((int) args[0], (void *) args[1], (unsigned) args[2]);
+        f->eax = read_handler ((int) args[1], (void *) args[2], (unsigned) args[3]);
       case SYS_WRITE:
-        f->eax = write_handler ((int) args[0], (void *) args[1], (unsigned) args[2]);
+        f->eax = write_handler ((int) args[1], (void *) args[2], (unsigned) args[3]);
       case SYS_SEEK:
-        seek_handler ((int) args[0], (unsigned) args[1]);
+        seek_handler ((int) args[1], (unsigned) args[2]);
       case SYS_TELL:
-        f->eax = tell_handler ((int) args[0]);
+        f->eax = tell_handler ((int) args[1]);
       case SYS_CLOSE:
-        close_handler ((int) args[0]);
+        close_handler ((int) args[1]);
       case SYS_PRACTICE:
-        f->eax = practice_handler ((int) args[0]);
+        f->eax = practice_handler ((int) args[1]);
     }
   }
 }
