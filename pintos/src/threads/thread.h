@@ -106,6 +106,7 @@ struct thread
     struct list child_processes;        /* A parent process can have many forked child processes */
     struct p_data *parent_process;      /* A process can have 1 parent process */
     struct semaphore sema;              /* semaphore used in exec to prevent race condition */
+    struct list* all_threads;           /* list of all the threads */
   };
 
 struct p_data {

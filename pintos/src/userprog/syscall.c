@@ -83,30 +83,64 @@ static void halt_handler (void) {
 
 static void exit_handler (int status) {
   struct p_data* parent = thread_current()->parent_process;
-  if (parent) {
+  if (parent->ref_count == 2) {
     parent->exit_status = status;
+    parent->ref_count --;
+    sema_up(&parent->sema);
   }
+
+  /* iterate through children and remove this as their parent*/
+  struct list_elem* e;
+  struct list childs = thread_current()->child_processes;
+  for (e = list_begin(&childs); e != list_end(&childs); e = list_next(e)) {
+    struct p_data* child = list_entry(e, struct p_data, elem);
+    child->ref_count --;
+    if (child->ref_count == 0) {
+      free (child);
+    }
+  }
+
   thread_exit();
 }
 
 static pid_t exec_handler (char *file) {
-  return 0;
+  tid_t tid = process_execute (file);
+
+  if (tid == TID_ERROR) return -1;
+
+  struct p_data* shared = malloc(sizeof(struct p_data));
+
+  struct list_elem *e;
+  struct list* all_list = thread_current()->all_threads;
+  for (e = list_begin (&all_list); e != list_end (&all_list); e = list_next (e)) {
+    struct thread *t = list_entry (e, struct thread, allelem);
+    if (t->tid == tid) { //found the new thread
+      shared->child_pid = tid;
+      sema_init(&shared->sema, 0);
+      shared->ref_count = 2;
+      t->parent_process = shared;
+      list_push_back(&thread_current()->child_processes, &shared->elem);
+    }
+  }
+
+  return (pid_t)tid;
 }
 
 static int wait_handler (pid_t pid) {
-  int is_valid_child = 0; //will be set to 1 if one of this thread's children are valid (direct and not already being waited on)
   struct list_elem* e;
   struct list childs = thread_current()->child_processes;
   for (e = list_begin(&childs); e != list_end(&childs); e = list_next(e)) {
     struct p_data* child = list_entry(e, struct p_data, elem);
     if (child->child_pid == pid && !child->sema.value) {
-      is_valid_child = 1;
       sema_down(&child->sema);
+      child->ref_count --;
+      list_remove(e);
+      free(e);
       return child->exit_status;
     }
   }
 
-  if (!is_valid_child) return -1;
+  return -1;
 }
 
 static bool create_handler (const char *file, unsigned initial_size) {

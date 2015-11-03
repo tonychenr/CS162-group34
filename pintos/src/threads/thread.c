@@ -469,8 +469,8 @@ init_thread (struct thread *t, const char *name, int priority)
   intr_set_level (old_level);
 
   list_init(&t->child_processes);
-  t->parent_process = NULL;
   sema_init(&t->sema, 0);
+  t->all_threads = &all_list;
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
