@@ -18,8 +18,9 @@
 #include "threads/synch.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "threads/malloc.h"
+#include "userprog/syscall.h"
 
-static struct semaphore temporary;
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 
@@ -38,7 +39,6 @@ process_execute (const char *file_name)
   char *fn_copy;
   char *fn_copy2;
   char *saveptr;
-  sema_init (&temporary, 0);
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0);
@@ -55,9 +55,16 @@ process_execute (const char *file_name)
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
-  if (tid == TID_ERROR)
-    palloc_free_page (fn_copy); 
-  return tid;
+  if (tid == TID_ERROR) {
+    palloc_free_page (fn_copy);
+    palloc_free_page (fn_copy2);
+    return tid;
+  }
+
+  struct thread *t = get_thread(tid);
+  sema_down(&t->exec_sema);
+  palloc_free_page (fn_copy2);
+  return t->exec_success;
 }
 
 /* A thread function that loads a user process and starts it
@@ -82,9 +89,13 @@ start_process (void *file_name_)
     counter++;
     token = strtok_r(NULL, " ", &saveptr1);
   }
+  struct thread *t = thread_current();
+  struct p_data *parent_data = t->parent_data;
   if (arg_string_size > 4000) {
     // Too many arguments . . . handle accordingly
-    thread_exit ();
+    t->exec_success = -1;
+    sema_up(&t->exec_sema);
+    exit_handler(-1);
   }
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
@@ -95,8 +106,11 @@ start_process (void *file_name_)
 
   /* If load failed, quit. */
   palloc_free_page (file_name);
-  if (!success) 
-    thread_exit ();
+  if (!success) {
+    t->exec_success = -1;
+    sema_up(&t->exec_sema);
+    exit_handler(-1);
+  }
 
   /* Pushing arguments onto the stack */
   void *initial_sp = if_.esp;
@@ -111,7 +125,7 @@ start_process (void *file_name_)
 
   /* Set argv[argc] = 0 and push on stack */
   if_.esp -= 4;
-  *(char *) if_.esp = 0;
+  *(int *) if_.esp = 0;
 
   /* Push stack address of arguments onto the stack */
   int curr_offset = 0;
@@ -128,6 +142,8 @@ start_process (void *file_name_)
   *(int *) if_.esp = counter;
   if_.esp -= 4;
   *(int *) if_.esp = 0;
+
+  sema_up(&t->exec_sema);
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -149,10 +165,23 @@ start_process (void *file_name_)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) 
+process_wait (tid_t child_tid) 
 {
-  sema_down (&temporary);
-  return 0;
+  struct list_elem* e;
+  struct list *childs = &thread_current()->child_processes;
+  struct thread *t;
+  for (e = list_begin(childs); e != list_end(childs); e = list_next(e)) {
+    struct p_data* child = list_entry(e, struct p_data, elem);
+    t = get_thread(child_tid);
+    if (t != NULL && t->status != THREAD_DYING && child->child_pid == child_tid) {
+      sema_down(&child->sema);
+      int exit_status = child->exit_status;
+      list_remove(e);
+      // free (child);
+      return exit_status;
+    }
+  }
+  return -1;
 }
 
 /* Free the current process's resources. */
@@ -178,7 +207,6 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
-  sema_up (&temporary);
 }
 
 /* Sets up the CPU for running user code in the current

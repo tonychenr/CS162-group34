@@ -13,6 +13,8 @@
 #include "lib/user/syscall.h"
 #include "lib/kernel/console.h"
 #include "devices/input.h"
+#include "threads/malloc.h"
+#include "threads/palloc.h"
 #include <list.h>
 
 struct file_struct {
@@ -25,7 +27,7 @@ struct file_struct {
 
 static void syscall_handler (struct intr_frame *);
 static void halt_handler (void);
-static void exit_handler (int status);
+void exit_handler (int status);
 static pid_t exec_handler (char *file);
 static int wait_handler (pid_t pid);
 static bool create_handler (const char *file, unsigned initial_size);
@@ -41,7 +43,8 @@ static int practice_handler (int i);
 
 static struct lock file_lock; /* Lock accessing file system */
 int number_arguments[10]; /* number_arguments[syscall_number] gives the number of arguments for syscall */
-struct list file_structs; /* List of open files */
+static struct list file_structs; /* List of open files */
+static struct lock ref_count_lock; /* Lock for accessing ref_count in shared data */
 
 static struct file_struct *get_file (int fd) {
   struct list_elem *e;
@@ -61,6 +64,7 @@ syscall_init (void)
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
   lock_init(&file_lock);
   list_init(&file_structs);
+  lock_init(&ref_count_lock);
   number_arguments[SYS_HALT] = 0;
   number_arguments[SYS_EXIT] = 1;
   number_arguments[SYS_EXEC] = 1;
@@ -81,66 +85,55 @@ static void halt_handler (void) {
   shutdown_power_off();
 }
 
-static void exit_handler (int status) {
-  struct p_data* parent = thread_current()->parent_process;
-  if (parent->ref_count == 2) {
+void exit_handler (int status) {
+
+  printf("%s: exit(%d)\n", &thread_current ()->name, status);
+
+  lock_acquire(&ref_count_lock);
+  struct p_data* parent = thread_current()->parent_data;
+  if (parent != NULL) {
     parent->exit_status = status;
-    parent->ref_count --;
     sema_up(&parent->sema);
+    parent->ref_count --;
+    if (parent->ref_count == 0) {
+      thread_current()->parent_data = NULL;
+      // free(parent);
+    }
   }
 
   /* iterate through children and remove this as their parent*/
   struct list_elem* e;
-  struct list childs = thread_current()->child_processes;
-  for (e = list_begin(&childs); e != list_end(&childs); e = list_next(e)) {
+  struct list *childs = &thread_current()->child_processes;
+  for (e = list_begin(childs); e != list_end(childs); e = list_next(e)) {
     struct p_data* child = list_entry(e, struct p_data, elem);
     child->ref_count --;
+    list_remove(e);
     if (child->ref_count == 0) {
-      free (child);
+      struct thread *t = get_thread(child->child_pid);
+      if (t != NULL) {
+        t->parent_data = NULL;
+      }
+      // free(child);
     }
   }
-
+  lock_release(&ref_count_lock);
   thread_exit();
 }
 
 static pid_t exec_handler (char *file) {
   tid_t tid = process_execute (file);
 
-  if (tid == TID_ERROR) return -1;
-
-  struct p_data* shared = malloc(sizeof(struct p_data));
-
-  struct list_elem *e;
-  struct list* all_list = thread_current()->all_threads;
-  for (e = list_begin (&all_list); e != list_end (&all_list); e = list_next (e)) {
-    struct thread *t = list_entry (e, struct thread, allelem);
-    if (t->tid == tid) { //found the new thread
-      shared->child_pid = tid;
-      sema_init(&shared->sema, 0);
-      shared->ref_count = 2;
-      t->parent_process = shared;
-      list_push_back(&thread_current()->child_processes, &shared->elem);
-    }
+  if (tid == TID_ERROR) {
+    return -1;
+  } else {
+    return tid;
   }
-
-  return (pid_t)tid;
 }
 
 static int wait_handler (pid_t pid) {
-  struct list_elem* e;
-  struct list childs = thread_current()->child_processes;
-  for (e = list_begin(&childs); e != list_end(&childs); e = list_next(e)) {
-    struct p_data* child = list_entry(e, struct p_data, elem);
-    if (child->child_pid == pid && !child->sema.value) {
-      sema_down(&child->sema);
-      child->ref_count --;
-      list_remove(e);
-      free(e);
-      return child->exit_status;
-    }
-  }
+  int exit_status = process_wait(pid);
+  return exit_status;
 
-  return -1;
 }
 
 static bool create_handler (const char *file, unsigned initial_size) {
@@ -180,7 +173,7 @@ static int write_handler (int fd, const void *buffer, unsigned size) {
     struct file_struct *write_file = get_file(fd);
     if (write_file == NULL) {
       lock_release(&file_lock);
-      exit_handler(-1);
+      exit_handler(fd);
     }
     num_bytes_written = file_write(write_file->sysFile, buffer, size);
   }
@@ -224,11 +217,11 @@ syscall_handler (struct intr_frame *f UNUSED)
     syscall_number = args[0];
     int i;
     for (i = 0; i < number_arguments[syscall_number]; i++) {
-      if (!is_user_vaddr(args + i)) {
+      if (!is_user_vaddr(args + (4 * i))) {
         f->eax = -1;
         exit_handler(-1);
       } else {
-        physical_addr = pagedir_get_page (pd, args + i);
+        physical_addr = pagedir_get_page (pd, args + (4 * i));
         if (physical_addr == NULL) {
           f->eax = -1;
           exit_handler(-1);

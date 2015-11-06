@@ -14,6 +14,7 @@
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
+#include "threads/malloc.h"
 
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
@@ -70,6 +71,18 @@ static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
+
+/* Gets thread with thread id tid */
+struct thread *get_thread (tid_t tid) {
+  struct list_elem *e;
+  struct thread *t;
+  for (e = list_begin (&all_list); e != list_end (&all_list); e = list_next (e)) {
+      t = list_entry (e, struct thread, allelem);
+      if (t->tid == tid)
+        return t;
+    }
+  return NULL;
+}
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -197,6 +210,16 @@ thread_create (const char *name, int priority,
   sf = alloc_frame (t, sizeof *sf);
   sf->eip = switch_entry;
   sf->ebp = 0;
+
+  struct p_data *shared = malloc(sizeof(struct p_data));
+  sema_init(&shared->sema, 0);
+  shared->child_pid = t->tid;
+  t->exec_success = t->tid;
+  shared->ref_count = 2;
+  list_push_back(&thread_current()->child_processes, &shared->elem);
+  t->parent_data = shared;
+  sema_init(&t->exec_sema, 0);
+  t->waited = false;
 
   /* Add to run queue. */
   thread_unblock (t);
@@ -469,8 +492,7 @@ init_thread (struct thread *t, const char *name, int priority)
   intr_set_level (old_level);
 
   list_init(&t->child_processes);
-  sema_init(&t->sema, 0);
-  t->all_threads = &all_list;
+  t->parent_data = NULL;
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and

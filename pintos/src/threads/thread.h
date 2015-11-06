@@ -102,18 +102,18 @@ struct thread
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
-
     struct list child_processes;        /* A parent process can have many forked child processes */
-    struct p_data *parent_process;      /* A process can have 1 parent process */
-    struct semaphore sema;              /* semaphore used in exec to prevent race condition */
-    struct list* all_threads;           /* list of all the threads */
+    struct p_data *parent_data;         /* A process can have 1 parent process, thus 1 shared data structure */
+    bool waited;                          /* Whether this thread has been waited upon before */
+    struct semaphore exec_sema;          /* Initialized to 0. Used to synchronize exec */
+    int exec_success;                     /* Return value for exec */
   };
 
 struct p_data {
   struct list_elem elem;                /*Used to add to a list of p_data child processes*/
   int exit_status;                      /*Exit code of child process*/
   tid_t child_pid;                      /*Thread ID of the child process*/
-  struct semaphore sema;                /*Initialized to 0. Downed when parent process waits on child*/
+  struct semaphore sema;               /*Initialized to 0. Downed when parent process waits on child*/
   int ref_count;                        /*Number of processes using this p_data. Can be 0,1, or 2*/
 };
 
@@ -121,6 +121,8 @@ struct p_data {
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 extern bool thread_mlfqs;
+
+struct thread *get_thread (tid_t tid);
 
 void thread_init (void);
 void thread_start (void);
