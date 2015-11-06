@@ -123,6 +123,12 @@ void exit_handler (int status) {
   for (e = list_begin(files); e != list_end(files); e = list_begin(files)) {
     close_handler(list_entry(e, struct file_struct, elem)->fd);
   }
+  struct file_struct *executable = thread_current()->executable;
+  if (executable != NULL) {
+    file_close(executable->sys_file);
+    thread_current()->executable = NULL;
+    free(executable);
+  }
   lock_release(&ref_count_lock);
   thread_exit();
 }

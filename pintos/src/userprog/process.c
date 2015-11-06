@@ -127,6 +127,25 @@ start_process (void *file_name_)
     free(file_name_copy);
     thread_exit();
   }
+
+  struct file *executable_file = filesys_open(passedArguments[0]);
+  if (executable_file == NULL) {
+    parent_data->exec_success = -1;
+    sema_up(&parent_data->exec_sema);
+    free(file_name_copy);
+    thread_exit();
+  }
+  struct file_struct *executable = malloc(sizeof(struct file_struct));
+  if (executable == NULL) {
+    parent_data->exec_success = -1;
+    sema_up(&parent_data->exec_sema);
+    free(file_name_copy);
+    file_close(executable_file);
+    thread_exit();
+  }
+  executable->sys_file = executable_file;
+  file_deny_write(executable_file);
+  t->executable = executable;
   /* Pushing arguments onto the stack */
   void *initial_sp = if_.esp;
   int i;

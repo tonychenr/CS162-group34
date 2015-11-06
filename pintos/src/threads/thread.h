@@ -105,6 +105,7 @@ struct thread
     struct list child_processes;        /* A parent process can have many forked child processes */
     struct p_data *parent_data;         /* A process can have 1 parent process, thus 1 shared data structure */
     struct list files;                  /* List of files opened by this process */
+    struct file_struct *executable;     /* File struct containing executable file of self */
   };
 
 struct p_data {

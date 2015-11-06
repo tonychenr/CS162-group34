@@ -226,6 +226,7 @@ thread_create (const char *name, int priority,
   t->parent_data = shared;
   sema_init(&shared->exec_sema, 0);
   list_init(&t->files);
+  t->executable = NULL;
 
   /* Add to run queue. */
   thread_unblock (t);
