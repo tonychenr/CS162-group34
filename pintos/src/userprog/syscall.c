@@ -18,14 +18,6 @@
 #include <list.h>
 #include <debug.h>
 
-struct file_struct {
-  struct file *sysFile;       /* Actual file struct in filesys/file.c */
-  int fd;                     /* File descriptor */
-  int ref_count;              /* Number of processes referencing this file */
-  bool removed;               /* True if a process removed this file. */
-  struct list_elem elem;      /* List elem for syscall file list */
-};
-
 static void syscall_handler (struct intr_frame *);
 static void halt_handler (void);
 void exit_handler (int status);
@@ -43,14 +35,15 @@ static void close_handler (int fd);
 static int practice_handler (int i);
 
 static struct lock file_lock; /* Lock accessing file system */
-static struct list file_structs; /* List of open files */
 static struct lock ref_count_lock; /* Lock for accessing ref_count in shared data */
+static int number_arguments[14]; /* number_arguments[syscall_number] gives the number of arguments for syscall */
 
 static struct file_struct *get_file (int fd) {
   struct list_elem *e;
   struct file_struct *nextFile;
   struct file_struct *matchedFile = NULL;
-  for (e = list_begin (&file_structs); e != list_end (&file_structs); e = list_next (e)) {
+  struct list *file_structs = &thread_current()->files;
+  for (e = list_begin (file_structs); e != list_end (file_structs); e = list_next (e)) {
     nextFile = list_entry(e, struct file_struct, elem);
     if (nextFile->fd == fd)
       break;
@@ -58,14 +51,32 @@ static struct file_struct *get_file (int fd) {
   return matchedFile;
 }
 
+static int create_fd (void) {
+  static int fd = 2;
+  fd++;
+  return fd;
+}
+
 void
 syscall_init (void) 
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
   lock_init(&file_lock);
-  list_init(&file_structs);
   lock_init(&ref_count_lock);
-
+  number_arguments[SYS_HALT] = 0;
+  number_arguments[SYS_EXIT] = 1;
+  number_arguments[SYS_EXEC] = 1;
+  number_arguments[SYS_WAIT] = 1;
+  number_arguments[SYS_CREATE] = 2;
+  number_arguments[SYS_REMOVE] = 1;
+  number_arguments[SYS_OPEN] = 1;
+  number_arguments[SYS_FILESIZE] = 1;
+  number_arguments[SYS_READ] = 3;
+  number_arguments[SYS_WRITE] = 3;
+  number_arguments[SYS_SEEK] = 2;
+  number_arguments[SYS_TELL] = 1;
+  number_arguments[SYS_CLOSE] = 1;
+  number_arguments[SYS_PRACTICE] = 1;
 }
 
 static void halt_handler (void) {
@@ -104,6 +115,11 @@ void exit_handler (int status) {
       free(child);
     }
   }
+
+  struct list *files = &thread_current()->files;
+  for (e = list_begin(files); e != list_end(files); e = list_begin(files)) {
+    close_handler(list_entry(e, struct file_struct, elem)->fd);
+  }
   lock_release(&ref_count_lock);
   thread_exit();
 }
@@ -132,7 +148,23 @@ static bool remove_handler (const char *file) {
 }
 
 static int open_handler (const char *file) {
-  return 0;
+  if (file == NULL) {
+    return -1;
+  }
+  struct file *f = filesys_open(file);
+  struct thread *t = thread_current();
+  if (f == NULL) {
+    return -1;
+  }
+  struct file_struct *fstruct = malloc(sizeof(struct file_struct));
+  if (fstruct == NULL) {
+    file_close(f);
+    return -1;
+  }
+  list_push_back(&t->files, &fstruct->elem);
+  fstruct->fd = create_fd();
+  fstruct->sys_file = f;
+  return fstruct->fd;
 }
 
 static int filesize_handler (int fd) {
@@ -158,7 +190,7 @@ static int write_handler (int fd, const void *buffer, unsigned size) {
   } else {
     struct file_struct *write_file = get_file(fd);
     if (write_file != NULL) {
-      num_bytes_written = file_write(write_file->sysFile, buffer, size);
+      num_bytes_written = file_write(write_file->sys_file, buffer, size);
     }
   }
   lock_release(&file_lock);
@@ -174,7 +206,12 @@ static unsigned tell_handler (int fd) {
 }
 
 static void close_handler (int fd) {
-  return;
+  struct file_struct *f = get_file(fd);
+  if (f != NULL) {
+    list_remove(&f->elem);
+    file_close(f->sys_file);
+    free(f);
+  }
 }
 
 static int practice_handler (int i) {
@@ -186,21 +223,6 @@ syscall_handler (struct intr_frame *f UNUSED)
 {
   uint32_t* args = ((uint32_t*) f->esp);
   uint32_t* pd = thread_current()->pagedir;
-  int number_arguments[10]; /* number_arguments[syscall_number] gives the number of arguments for syscall */
-  number_arguments[SYS_HALT] = 0;
-  number_arguments[SYS_EXIT] = 1;
-  number_arguments[SYS_EXEC] = 1;
-  number_arguments[SYS_WAIT] = 1;
-  number_arguments[SYS_CREATE] = 2;
-  number_arguments[SYS_REMOVE] = 1;
-  number_arguments[SYS_OPEN] = 1;
-  number_arguments[SYS_FILESIZE] = 1;
-  number_arguments[SYS_READ] = 3;
-  number_arguments[SYS_WRITE] = 3;
-  number_arguments[SYS_SEEK] = 2;
-  number_arguments[SYS_TELL] = 1;
-  number_arguments[SYS_CLOSE] = 1;
-  number_arguments[SYS_PRACTICE] = 1;
   int syscall_number;
   int *physical_addr;
   if (!is_user_vaddr(args)) {

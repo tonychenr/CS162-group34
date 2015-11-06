@@ -104,6 +104,7 @@ struct thread
     unsigned magic;                     /* Detects stack overflow. */
     struct list child_processes;        /* A parent process can have many forked child processes */
     struct p_data *parent_data;         /* A process can have 1 parent process, thus 1 shared data structure */
+    struct list files;                  /* List of files opened by this process */
   };
 
 struct p_data {
@@ -111,9 +112,15 @@ struct p_data {
   int exit_status;                      /*Exit code of child process*/
   tid_t child_pid;                      /*Thread ID of the child process*/
   int exec_success;                     /* Return value for exec */
-  struct semaphore sema;               /*Initialized to 0. Downed when parent process waits on child*/
+  struct semaphore sema;                /*Initialized to 0. Downed when parent process waits on child*/
   int ref_count;                        /*Number of processes using this p_data. Can be 0,1, or 2*/
-  struct semaphore exec_sema;          /* Initialized to 0. Used to synchronize exec */
+  struct semaphore exec_sema;           /* Initialized to 0. Used to synchronize exec */
+};
+
+struct file_struct {
+  struct file *sys_file;                /* Actual file struct in filesys/file.c */
+  int fd;                               /* File descriptor */
+  struct list_elem elem;                /* List elem for syscall file list */
 };
 
 /* If false (default), use round-robin scheduler.

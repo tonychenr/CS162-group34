@@ -211,9 +211,10 @@ thread_create (const char *name, int priority,
   sf->eip = switch_entry;
   sf->ebp = 0;
 
-  struct p_data *shared = NULL;
-  while (shared == NULL) {
-    shared = malloc(sizeof(struct p_data));
+  struct p_data *shared;
+  shared = malloc(sizeof(struct p_data));
+  if (shared == NULL) {
+    thread_exit();
   }
   shared->exit_status = 0;
   sema_init(&shared->sema, 0);
@@ -223,6 +224,7 @@ thread_create (const char *name, int priority,
   list_push_back(&thread_current()->child_processes, &shared->elem);
   t->parent_data = shared;
   sema_init(&shared->exec_sema, 0);
+  list_init(&t->files);
 
   /* Add to run queue. */
   thread_unblock (t);
