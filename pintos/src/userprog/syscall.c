@@ -37,6 +37,7 @@ static int practice_handler (int i);
 static struct lock file_lock; /* Lock accessing file system */
 static struct lock ref_count_lock; /* Lock for accessing ref_count in shared data */
 static int number_arguments[14]; /* number_arguments[syscall_number] gives the number of arguments for syscall */
+static int global_fd; /* Index of file descriptors */
 
 static struct file_struct *get_file (int fd) {
   struct list_elem *e;
@@ -52,9 +53,8 @@ static struct file_struct *get_file (int fd) {
 }
 
 static int create_fd (void) {
-  static int fd = 2;
-  fd++;
-  return fd;
+  global_fd++;
+  return global_fd;
 }
 
 void
@@ -77,6 +77,7 @@ syscall_init (void)
   number_arguments[SYS_TELL] = 1;
   number_arguments[SYS_CLOSE] = 1;
   number_arguments[SYS_PRACTICE] = 1;
+  global_fd = 2;
 }
 
 static void halt_handler (void) {
@@ -91,6 +92,7 @@ void exit_handler (int status) {
   struct p_data* parent = thread_current()->parent_data;
   if (parent != NULL) {
     parent->exit_status = status;
+    parent->child_thread = NULL;
     sema_up(&parent->sema);
     parent->ref_count --;
     if (parent->ref_count == 0) {
@@ -108,7 +110,7 @@ void exit_handler (int status) {
     child->ref_count --;
     list_remove(e);
     if (child->ref_count == 0) {
-      struct thread *t = get_thread(child->child_pid);
+      struct thread *t = child->child_thread;
       if (t != NULL) {
         t->parent_data = NULL;
       }
@@ -226,24 +228,20 @@ syscall_handler (struct intr_frame *f UNUSED)
   int syscall_number;
   int *physical_addr;
   if (!is_user_vaddr(args)) {
-    f->eax = -1;
     exit_handler(-1);
   } else {
     physical_addr = pagedir_get_page (pd, args);
     if (physical_addr == NULL) {
-      f->eax = -1;
       exit_handler(-1);
     }
     syscall_number = args[0];
     int i;
     for (i = 0; i <= number_arguments[syscall_number]; i++) {
       if (!is_user_vaddr(args + i)) {
-        f->eax = -1;
         exit_handler(-1);
       } else {
         physical_addr = pagedir_get_page (pd, args + i);
         if (physical_addr == NULL) {
-          f->eax = -1;
           exit_handler(-1);
         }
       }
@@ -290,6 +288,7 @@ syscall_handler (struct intr_frame *f UNUSED)
         break;
       case SYS_PRACTICE:
         f->eax = practice_handler ((int) args[1]);
+        break;
     }
   }
 }

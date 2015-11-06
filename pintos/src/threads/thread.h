@@ -111,6 +111,7 @@ struct p_data {
   struct list_elem elem;                /*Used to add to a list of p_data child processes*/
   int exit_status;                      /*Exit code of child process*/
   tid_t child_pid;                      /*Thread ID of the child process*/
+  struct thread *child_thread;          /* Pointer to child thread */
   int exec_success;                     /* Return value for exec */
   struct semaphore sema;                /*Initialized to 0. Downed when parent process waits on child*/
   int ref_count;                        /*Number of processes using this p_data. Can be 0,1, or 2*/

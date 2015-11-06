@@ -214,13 +214,14 @@ thread_create (const char *name, int priority,
   struct p_data *shared;
   shared = malloc(sizeof(struct p_data));
   if (shared == NULL) {
-    thread_exit();
+    return TID_ERROR;
   }
   shared->exit_status = 0;
   sema_init(&shared->sema, 0);
   shared->child_pid = t->tid;
   shared->exec_success = t->tid;
   shared->ref_count = 2;
+  shared->child_thread = t;
   list_push_back(&thread_current()->child_processes, &shared->elem);
   t->parent_data = shared;
   sema_init(&shared->exec_sema, 0);
