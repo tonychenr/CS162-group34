@@ -110,7 +110,7 @@ start_process (void *file_name_)
     free(file_name_copy);
     parent_data->exec_success = -1;
     sema_up(&parent_data->exec_sema);
-    thread_exit();
+    exit_handler(-1);
   }
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);

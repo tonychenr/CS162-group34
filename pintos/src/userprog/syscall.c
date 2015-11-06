@@ -143,11 +143,17 @@ static int wait_handler (pid_t pid) {
 }
 
 static bool create_handler (const char *file, unsigned initial_size) {
-  return false;
+  lock_acquire(&file_lock);
+  bool created = filesys_create(file, initial_size); 
+  lock_release(&file_lock);
+  return created;
 }
 
 static bool remove_handler (const char *file) {
-  return false;
+  lock_acquire(&file_lock);
+  bool destroyed = filesys_remove(file);
+  lock_release(&file_lock);
+  return destroyed;
 }
 
 static int open_handler (const char *file) {
@@ -171,11 +177,46 @@ static int open_handler (const char *file) {
 }
 
 static int filesize_handler (int fd) {
-  return 0;
+  struct file_struct * file_sizing;
+  int size;
+  lock_acquire(&file_lock);
+  file_sizing = get_file(fd);
+  size = file_length(file->sysFile);
+  lock_release(&file_lock);
+  return size;
 }
 
 static int read_handler (int fd, void *buffer, unsigned size) {
-  return 0;
+  // Verifies that the buffer is a user virtual address as well as verifies it is mapped to kernel virtual memory
+  if (!is_user_vaddr(buffer + size) || pagedir_get_page(thread_current()->pagedir, buffer) == NULL) {
+    exit_handler(-1);
+  }
+  int num_bytes_read = 0;
+  lock_acquire(&file_lock);
+  if (fd == STDIN_FILENO) {
+    // Special case reading from STDIN
+    char * buffy = (char *) buffer;
+    while (num_bytes_read < size) {
+      char chary = input_getc();
+      buffy[num_bytes_read] = chary;
+      num_bytes_read = num_bytes_read + 1;
+    }
+  } else if (fd == STDOUT_FILENO) {
+    // Can not read from STDOUT, so gracefully exit program
+    lock_release(&file_lock);
+    exit_handler(-1);
+  } else {
+    // Should be dealing with a normal file, if so use given functions
+    struct file_struct * file_reading = get_file(fd);
+    if (file_reading != NULL) {
+      num_bytes_read = file_read(file_reading->sysFile, buffer, size);
+    } else {
+      // Was not able to read from file so return -1 
+      num_bytes_read = -1;
+    }
+  }
+  lock_release(&file_lock);
+  return num_bytes_read;
 }
 
 static int write_handler (int fd, const void *buffer, unsigned size) {
@@ -201,11 +242,17 @@ static int write_handler (int fd, const void *buffer, unsigned size) {
 }
 
 static void seek_handler (int fd, unsigned position) {
-  return;
+  lock_acquire(&file_lock);
+  struct file_struct * file_seeking = get_file(fd);
+  file_seek(file_seeking->sysFile, position);
+  lock_release(&file_lock);
 }
 
 static unsigned tell_handler (int fd) {
-  return 0;
+  lock_acquire(&file_lock);
+  struct file_struct * file_telling = get_file(fd);
+  file_tell(file_telling->sysFile);
+  lock_release(&file_lock);
 }
 
 static void close_handler (int fd) {
