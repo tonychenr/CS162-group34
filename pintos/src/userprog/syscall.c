@@ -143,6 +143,9 @@ static int wait_handler (pid_t pid) {
 }
 
 static bool create_handler (const char *file, unsigned initial_size) {
+  if (file == NULL) {
+    exit_handler(-1);
+  }
   lock_acquire(&file_lock);
   bool created = filesys_create(file, initial_size); 
   lock_release(&file_lock);
@@ -181,7 +184,7 @@ static int filesize_handler (int fd) {
   int size;
   lock_acquire(&file_lock);
   file_sizing = get_file(fd);
-  size = file_length(file->sysFile);
+  size = file_length(file_sizing->sys_file);
   lock_release(&file_lock);
   return size;
 }
@@ -196,7 +199,7 @@ static int read_handler (int fd, void *buffer, unsigned size) {
   if (fd == STDIN_FILENO) {
     // Special case reading from STDIN
     char * buffy = (char *) buffer;
-    while (num_bytes_read < size) {
+    while (num_bytes_read < (int) size) {
       char chary = input_getc();
       buffy[num_bytes_read] = chary;
       num_bytes_read = num_bytes_read + 1;
@@ -209,7 +212,7 @@ static int read_handler (int fd, void *buffer, unsigned size) {
     // Should be dealing with a normal file, if so use given functions
     struct file_struct * file_reading = get_file(fd);
     if (file_reading != NULL) {
-      num_bytes_read = file_read(file_reading->sysFile, buffer, size);
+      num_bytes_read = file_read(file_reading->sys_file, buffer, size);
     } else {
       // Was not able to read from file so return -1 
       num_bytes_read = -1;
@@ -244,15 +247,17 @@ static int write_handler (int fd, const void *buffer, unsigned size) {
 static void seek_handler (int fd, unsigned position) {
   lock_acquire(&file_lock);
   struct file_struct * file_seeking = get_file(fd);
-  file_seek(file_seeking->sysFile, position);
+  file_seek(file_seeking->sys_file, position);
   lock_release(&file_lock);
 }
 
 static unsigned tell_handler (int fd) {
+  unsigned offset = 0;
   lock_acquire(&file_lock);
   struct file_struct * file_telling = get_file(fd);
-  file_tell(file_telling->sysFile);
+  offset = file_tell(file_telling->sys_file);
   lock_release(&file_lock);
+  return offset;
 }
 
 static void close_handler (int fd) {
