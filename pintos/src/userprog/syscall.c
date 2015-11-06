@@ -47,6 +47,7 @@ static struct file_struct *get_file (int fd) {
   for (e = list_begin (file_structs); e != list_end (file_structs); e = list_next (e)) {
     nextFile = list_entry(e, struct file_struct, elem);
     if (nextFile->fd == fd)
+      matchedFile = nextFile;
       break;
   }
   return matchedFile;

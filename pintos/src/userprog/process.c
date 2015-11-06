@@ -110,7 +110,7 @@ start_process (void *file_name_)
     free(file_name_copy);
     parent_data->exec_success = -1;
     sema_up(&parent_data->exec_sema);
-    exit_handler(-1);
+    thread_exit();
   }
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
@@ -125,7 +125,7 @@ start_process (void *file_name_)
     parent_data->exec_success = -1;
     sema_up(&parent_data->exec_sema);
     free(file_name_copy);
-    exit_handler(-1);
+    thread_exit();
   }
   /* Pushing arguments onto the stack */
   void *initial_sp = if_.esp;
