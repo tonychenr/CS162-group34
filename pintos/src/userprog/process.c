@@ -47,24 +47,40 @@ process_execute (const char *file_name)
   strlcpy (fn_copy, file_name, PGSIZE);
 
   // Changed the file name to be just the first argument
-  fn_copy2 = palloc_get_page (0);
+  fn_copy2 = malloc(strlen(file_name) + 1);
   if (fn_copy2 == NULL)
     return TID_ERROR;
-  strlcpy (fn_copy2, file_name, PGSIZE);
+  strlcpy (fn_copy2, file_name, strlen(file_name) + 1);
   file_name = strtok_r(fn_copy2, " ", &saveptr);
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR) {
     palloc_free_page (fn_copy);
-    palloc_free_page (fn_copy2);
+    free (fn_copy2);
     return tid;
   }
 
-  struct thread *t = get_thread(tid);
-  sema_down(&t->exec_sema);
-  palloc_free_page (fn_copy2);
-  return t->exec_success;
+  struct p_data *parent_data = NULL;
+  struct list_elem* e;
+  struct list *childs = &thread_current()->child_processes;
+  for (e = list_begin(childs); e != list_end(childs); e = list_next(e)) {
+    struct p_data* child = list_entry(e, struct p_data, elem);
+    if (child->child_pid == tid) {
+      parent_data = child;
+      break;
+    }
+  }
+  if (parent_data != NULL) {
+    sema_down(&parent_data->exec_sema);
+    free (fn_copy2);
+    return parent_data->exec_success;
+  } else {
+    free (fn_copy2);
+    return -1;
+  }
+
+  
 }
 
 /* A thread function that loads a user process and starts it
@@ -93,9 +109,9 @@ start_process (void *file_name_)
   struct p_data *parent_data = t->parent_data;
   if (arg_string_size > 4000) {
     // Too many arguments . . . handle accordingly
-    t->exec_success = -1;
-    sema_up(&t->exec_sema);
-    exit_handler(-1);
+    parent_data->exec_success = -1;
+    sema_up(&parent_data->exec_sema);
+    thread_exit();
   }
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
@@ -107,11 +123,10 @@ start_process (void *file_name_)
   /* If load failed, quit. */
   palloc_free_page (file_name);
   if (!success) {
-    t->exec_success = -1;
-    sema_up(&t->exec_sema);
-    exit_handler(-1);
+    parent_data->exec_success = -1;
+    sema_up(&parent_data->exec_sema);
+    thread_exit();
   }
-
   /* Pushing arguments onto the stack */
   void *initial_sp = if_.esp;
   int i;
@@ -143,7 +158,7 @@ start_process (void *file_name_)
   if_.esp -= 4;
   *(int *) if_.esp = 0;
 
-  sema_up(&t->exec_sema);
+  sema_up(&parent_data->exec_sema);
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -169,15 +184,18 @@ process_wait (tid_t child_tid)
 {
   struct list_elem* e;
   struct list *childs = &thread_current()->child_processes;
-  struct thread *t;
+  
   for (e = list_begin(childs); e != list_end(childs); e = list_next(e)) {
     struct p_data* child = list_entry(e, struct p_data, elem);
-    t = get_thread(child_tid);
-    if (t != NULL && t->status != THREAD_DYING && child->child_pid == child_tid) {
-      sema_down(&child->sema);
+    struct thread *t = get_thread(child_tid);
+    if (child->child_pid == child_tid) {
+      if (t != NULL) {
+        sema_down(&child->sema);
+      }
       int exit_status = child->exit_status;
       list_remove(e);
-      // free (child);
+      free (child);
+
       return exit_status;
     }
   }

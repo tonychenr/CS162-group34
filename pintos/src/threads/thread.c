@@ -211,16 +211,18 @@ thread_create (const char *name, int priority,
   sf->eip = switch_entry;
   sf->ebp = 0;
 
-  struct p_data *shared = malloc(sizeof(struct p_data));
+  struct p_data *shared = NULL;
+  while (shared == NULL) {
+    shared = malloc(sizeof(struct p_data));
+  }
   shared->exit_status = 0;
   sema_init(&shared->sema, 0);
   shared->child_pid = t->tid;
-  t->exec_success = t->tid;
+  shared->exec_success = t->tid;
   shared->ref_count = 2;
   list_push_back(&thread_current()->child_processes, &shared->elem);
   t->parent_data = shared;
-  sema_init(&t->exec_sema, 0);
-  t->waited = false;
+  sema_init(&shared->exec_sema, 0);
 
   /* Add to run queue. */
   thread_unblock (t);

@@ -16,6 +16,7 @@
 #include "threads/malloc.h"
 #include "threads/palloc.h"
 #include <list.h>
+#include <debug.h>
 
 struct file_struct {
   struct file *sysFile;       /* Actual file struct in filesys/file.c */
@@ -42,7 +43,6 @@ static void close_handler (int fd);
 static int practice_handler (int i);
 
 static struct lock file_lock; /* Lock accessing file system */
-int number_arguments[10]; /* number_arguments[syscall_number] gives the number of arguments for syscall */
 static struct list file_structs; /* List of open files */
 static struct lock ref_count_lock; /* Lock for accessing ref_count in shared data */
 
@@ -65,20 +65,7 @@ syscall_init (void)
   lock_init(&file_lock);
   list_init(&file_structs);
   lock_init(&ref_count_lock);
-  number_arguments[SYS_HALT] = 0;
-  number_arguments[SYS_EXIT] = 1;
-  number_arguments[SYS_EXEC] = 1;
-  number_arguments[SYS_WAIT] = 1;
-  number_arguments[SYS_CREATE] = 2;
-  number_arguments[SYS_REMOVE] = 1;
-  number_arguments[SYS_OPEN] = 1;
-  number_arguments[SYS_FILESIZE] = 1;
-  number_arguments[SYS_READ] = 3;
-  number_arguments[SYS_WRITE] = 3;
-  number_arguments[SYS_SEEK] = 2;
-  number_arguments[SYS_TELL] = 1;
-  number_arguments[SYS_CLOSE] = 1;
-  number_arguments[SYS_PRACTICE] = 1;
+
 }
 
 static void halt_handler (void) {
@@ -97,16 +84,15 @@ void exit_handler (int status) {
     parent->ref_count --;
     if (parent->ref_count == 0) {
       thread_current()->parent_data = NULL;
-      // free(parent);
+      free(parent);
+
     }
   }
 
   /* iterate through children and remove this as their parent*/
   struct list_elem* e;
   struct list *childs = &thread_current()->child_processes;
-  int count = 0;
   for (e = list_begin(childs); e != list_end(childs); e = list_next(e)) {
-    count++;
     struct p_data* child = list_entry(e, struct p_data, elem);
     child->ref_count --;
     list_remove(e);
@@ -115,7 +101,7 @@ void exit_handler (int status) {
       if (t != NULL) {
         t->parent_data = NULL;
       }
-      // free(child);
+      free(child);
     }
   }
   lock_release(&ref_count_lock);
@@ -123,11 +109,10 @@ void exit_handler (int status) {
 }
 
 static pid_t exec_handler (char *file) {
-  tid_t tid = process_execute (file);
-
-  if (tid == TID_ERROR) {
+  if (file == NULL) {
     return -1;
   } else {
+    pid_t tid = process_execute (file);
     return tid;
   }
 }
@@ -159,10 +144,9 @@ static int read_handler (int fd, void *buffer, unsigned size) {
 }
 
 static int write_handler (int fd, const void *buffer, unsigned size) {
-  if (!is_user_vaddr(buffer + size)) {
+  if (!is_user_vaddr(buffer + size) || pagedir_get_page(thread_current()->pagedir, buffer) == NULL) {
     exit_handler(-1);
   }
-
   int num_bytes_written = 0;
   lock_acquire(&file_lock);
   if (fd == STDIN_FILENO) {
@@ -173,13 +157,10 @@ static int write_handler (int fd, const void *buffer, unsigned size) {
     num_bytes_written = size;
   } else {
     struct file_struct *write_file = get_file(fd);
-    if (write_file == NULL) {
-      lock_release(&file_lock);
-      exit_handler(-1);
+    if (write_file != NULL) {
+      num_bytes_written = file_write(write_file->sysFile, buffer, size);
     }
-    num_bytes_written = file_write(write_file->sysFile, buffer, size);
   }
-
   lock_release(&file_lock);
   return num_bytes_written;
 }
@@ -205,6 +186,21 @@ syscall_handler (struct intr_frame *f UNUSED)
 {
   uint32_t* args = ((uint32_t*) f->esp);
   uint32_t* pd = thread_current()->pagedir;
+  int number_arguments[10]; /* number_arguments[syscall_number] gives the number of arguments for syscall */
+  number_arguments[SYS_HALT] = 0;
+  number_arguments[SYS_EXIT] = 1;
+  number_arguments[SYS_EXEC] = 1;
+  number_arguments[SYS_WAIT] = 1;
+  number_arguments[SYS_CREATE] = 2;
+  number_arguments[SYS_REMOVE] = 1;
+  number_arguments[SYS_OPEN] = 1;
+  number_arguments[SYS_FILESIZE] = 1;
+  number_arguments[SYS_READ] = 3;
+  number_arguments[SYS_WRITE] = 3;
+  number_arguments[SYS_SEEK] = 2;
+  number_arguments[SYS_TELL] = 1;
+  number_arguments[SYS_CLOSE] = 1;
+  number_arguments[SYS_PRACTICE] = 1;
   int syscall_number;
   int *physical_addr;
   if (!is_user_vaddr(args)) {
@@ -218,47 +214,58 @@ syscall_handler (struct intr_frame *f UNUSED)
     }
     syscall_number = args[0];
     int i;
-    for (i = 0; i < number_arguments[syscall_number]; i++) {
-      if (!is_user_vaddr(args + (4 * i))) {
+    for (i = 0; i <= number_arguments[syscall_number]; i++) {
+      if (!is_user_vaddr(args + i)) {
         f->eax = -1;
         exit_handler(-1);
       } else {
-        physical_addr = pagedir_get_page (pd, args + (4 * i));
+        physical_addr = pagedir_get_page (pd, args + i);
         if (physical_addr == NULL) {
           f->eax = -1;
           exit_handler(-1);
         }
       }
-
     }
     switch (syscall_number) {
       case SYS_HALT:
         halt_handler ();
+        break;
       case SYS_EXIT:
-        f->eax = (int) args[1];
         exit_handler((int) args[1]);
+        break;
       case SYS_EXEC:
         f->eax = exec_handler ((char *) args[1]);
+        break;
       case SYS_WAIT:
         f->eax = wait_handler ((pid_t) args[1]);
+        break;
       case SYS_CREATE:
         f->eax = create_handler ((char *) args[1], (unsigned) args[2]);
+        break;
       case SYS_REMOVE:
         f->eax = remove_handler ((char *) args[1]);
+        break;
       case SYS_OPEN:
         f->eax = open_handler ((char *) args[1]);
+        break;
       case SYS_FILESIZE:
         f->eax = filesize_handler ((int) args[1]);
+        break;
       case SYS_READ:
         f->eax = read_handler ((int) args[1], (void *) args[2], (unsigned) args[3]);
+        break;
       case SYS_WRITE:
         f->eax = write_handler ((int) args[1], (void *) args[2], (unsigned) args[3]);
+        break;
       case SYS_SEEK:
         seek_handler ((int) args[1], (unsigned) args[2]);
+        break;
       case SYS_TELL:
         f->eax = tell_handler ((int) args[1]);
+        break;
       case SYS_CLOSE:
         close_handler ((int) args[1]);
+        break;
       case SYS_PRACTICE:
         f->eax = practice_handler ((int) args[1]);
     }
