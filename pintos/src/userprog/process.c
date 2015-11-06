@@ -29,9 +29,6 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp);
    before process_execute() returns.  Returns the new process's
    thread id, or TID_ERROR if the thread cannot be created. */
 
-// Represents the maximum number of bytes file_name can be
-int argMax = 4000;
-
 tid_t
 process_execute (const char *file_name) 
 {
@@ -92,8 +89,8 @@ start_process (void *file_name_)
   struct intr_frame if_;
   bool success;
 
-  char file_name_copy[strlen(file_name) + 1];
-  strlcpy(file_name_copy, file_name, PGSIZE);
+  char *file_name_copy = malloc(strlen(file_name) + 1);
+  strlcpy(file_name_copy, file_name, strlen(file_name) + 1);
   char * token, *saveptr1;
   char *passedArguments[128];
   token = strtok_r(file_name_copy, " ", &saveptr1);
@@ -109,9 +106,11 @@ start_process (void *file_name_)
   struct p_data *parent_data = t->parent_data;
   if (arg_string_size > 4000) {
     // Too many arguments . . . handle accordingly
+    palloc_free_page (file_name);
+    free(file_name_copy);
     parent_data->exec_success = -1;
     sema_up(&parent_data->exec_sema);
-    thread_exit();
+    exit_handler(-1);
   }
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
@@ -125,7 +124,8 @@ start_process (void *file_name_)
   if (!success) {
     parent_data->exec_success = -1;
     sema_up(&parent_data->exec_sema);
-    thread_exit();
+    free(file_name_copy);
+    exit_handler(-1);
   }
   /* Pushing arguments onto the stack */
   void *initial_sp = if_.esp;
@@ -147,7 +147,7 @@ start_process (void *file_name_)
   for (i = counter - 1; i >= 0; i--) {
     if_.esp -= 4;
     curr_offset += strlen(passedArguments[i]) + 1;
-    *(void **) if_.esp = initial_sp - curr_offset;
+    *(char ***) if_.esp = initial_sp - curr_offset;
   }
 
   /* Push argv onto stack then push argc onto stack then push fake return address on stack*/
@@ -158,6 +158,7 @@ start_process (void *file_name_)
   if_.esp -= 4;
   *(int *) if_.esp = 0;
 
+  free(file_name_copy);
   sema_up(&parent_data->exec_sema);
 
   /* Start the user process by simulating a return from an
@@ -187,9 +188,8 @@ process_wait (tid_t child_tid)
   
   for (e = list_begin(childs); e != list_end(childs); e = list_next(e)) {
     struct p_data* child = list_entry(e, struct p_data, elem);
-    struct thread *t = get_thread(child_tid);
     if (child->child_pid == child_tid) {
-      if (t != NULL) {
+      if (child->ref_count == 2) {
         sema_down(&child->sema);
       }
       int exit_status = child->exit_status;

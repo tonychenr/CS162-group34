@@ -18,14 +18,6 @@
 #include <list.h>
 #include <debug.h>
 
-struct file_struct {
-  struct file *sysFile;       /* Actual file struct in filesys/file.c */
-  int fd;                     /* File descriptor */
-  int ref_count;              /* Number of processes referencing this file */
-  bool removed;               /* True if a process removed this file. */
-  struct list_elem elem;      /* List elem for syscall file list */
-};
-
 static void syscall_handler (struct intr_frame *);
 static void halt_handler (void);
 void exit_handler (int status);
@@ -43,14 +35,16 @@ static void close_handler (int fd);
 static int practice_handler (int i);
 
 static struct lock file_lock; /* Lock accessing file system */
-static struct list file_structs; /* List of open files */
 static struct lock ref_count_lock; /* Lock for accessing ref_count in shared data */
+static int number_arguments[14]; /* number_arguments[syscall_number] gives the number of arguments for syscall */
+static int global_fd; /* Index of file descriptors */
 
 static struct file_struct *get_file (int fd) {
   struct list_elem *e;
   struct file_struct *nextFile;
   struct file_struct *matchedFile = NULL;
-  for (e = list_begin (&file_structs); e != list_end (&file_structs); e = list_next (e)) {
+  struct list *file_structs = &thread_current()->files;
+  for (e = list_begin (file_structs); e != list_end (file_structs); e = list_next (e)) {
     nextFile = list_entry(e, struct file_struct, elem);
     if (nextFile->fd == fd)
       break;
@@ -58,14 +52,32 @@ static struct file_struct *get_file (int fd) {
   return matchedFile;
 }
 
+static int create_fd (void) {
+  global_fd++;
+  return global_fd;
+}
+
 void
 syscall_init (void) 
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
   lock_init(&file_lock);
-  list_init(&file_structs);
   lock_init(&ref_count_lock);
-
+  number_arguments[SYS_HALT] = 0;
+  number_arguments[SYS_EXIT] = 1;
+  number_arguments[SYS_EXEC] = 1;
+  number_arguments[SYS_WAIT] = 1;
+  number_arguments[SYS_CREATE] = 2;
+  number_arguments[SYS_REMOVE] = 1;
+  number_arguments[SYS_OPEN] = 1;
+  number_arguments[SYS_FILESIZE] = 1;
+  number_arguments[SYS_READ] = 3;
+  number_arguments[SYS_WRITE] = 3;
+  number_arguments[SYS_SEEK] = 2;
+  number_arguments[SYS_TELL] = 1;
+  number_arguments[SYS_CLOSE] = 1;
+  number_arguments[SYS_PRACTICE] = 1;
+  global_fd = 2;
 }
 
 static void halt_handler (void) {
@@ -80,6 +92,7 @@ void exit_handler (int status) {
   struct p_data* parent = thread_current()->parent_data;
   if (parent != NULL) {
     parent->exit_status = status;
+    parent->child_thread = NULL;
     sema_up(&parent->sema);
     parent->ref_count --;
     if (parent->ref_count == 0) {
@@ -97,12 +110,17 @@ void exit_handler (int status) {
     child->ref_count --;
     list_remove(e);
     if (child->ref_count == 0) {
-      struct thread *t = get_thread(child->child_pid);
+      struct thread *t = child->child_thread;
       if (t != NULL) {
         t->parent_data = NULL;
       }
       free(child);
     }
+  }
+
+  struct list *files = &thread_current()->files;
+  for (e = list_begin(files); e != list_end(files); e = list_begin(files)) {
+    close_handler(list_entry(e, struct file_struct, elem)->fd);
   }
   lock_release(&ref_count_lock);
   thread_exit();
@@ -124,23 +142,80 @@ static int wait_handler (pid_t pid) {
 }
 
 static bool create_handler (const char *file, unsigned initial_size) {
-  return false;
+  lock_acquire(&file_lock);
+  bool created = filesys_create(file, initial_size); 
+  lock_release(&file_lock);
+  return created;
 }
 
 static bool remove_handler (const char *file) {
-  return false;
+  lock_acquire(&file_lock);
+  bool destroyed = filesys_remove(file);
+  lock_release(&file_lock);
+  return destroyed;
 }
 
 static int open_handler (const char *file) {
-  return 0;
+  if (file == NULL) {
+    return -1;
+  }
+  struct file *f = filesys_open(file);
+  struct thread *t = thread_current();
+  if (f == NULL) {
+    return -1;
+  }
+  struct file_struct *fstruct = malloc(sizeof(struct file_struct));
+  if (fstruct == NULL) {
+    file_close(f);
+    return -1;
+  }
+  list_push_back(&t->files, &fstruct->elem);
+  fstruct->fd = create_fd();
+  fstruct->sys_file = f;
+  return fstruct->fd;
 }
 
 static int filesize_handler (int fd) {
-  return 0;
+  struct file_struct * file_sizing;
+  int size;
+  lock_acquire(&file_lock);
+  file_sizing = get_file(fd);
+  size = file_length(file->sysFile);
+  lock_release(&file_lock);
+  return size;
 }
 
 static int read_handler (int fd, void *buffer, unsigned size) {
-  return 0;
+  // Verifies that the buffer is a user virtual address as well as verifies it is mapped to kernel virtual memory
+  if (!is_user_vaddr(buffer + size) || pagedir_get_page(thread_current()->pagedir, buffer) == NULL) {
+    exit_handler(-1);
+  }
+  int num_bytes_read = 0;
+  lock_acquire(&file_lock);
+  if (fd == STDIN_FILENO) {
+    // Special case reading from STDIN
+    char * buffy = (char *) buffer;
+    while (num_bytes_read < size) {
+      char chary = input_getc();
+      buffy[num_bytes_read] = chary;
+      num_bytes_read = num_bytes_read + 1;
+    }
+  } else if (fd == STDOUT_FILENO) {
+    // Can not read from STDOUT, so gracefully exit program
+    lock_release(&file_lock);
+    exit_handler(-1);
+  } else {
+    // Should be dealing with a normal file, if so use given functions
+    struct file_struct * file_reading = get_file(fd);
+    if (file_reading != NULL) {
+      num_bytes_read = file_read(file_reading->sysFile, buffer, size);
+    } else {
+      // Was not able to read from file so return -1 
+      num_bytes_read = -1;
+    }
+  }
+  lock_release(&file_lock);
+  return num_bytes_read;
 }
 
 static int write_handler (int fd, const void *buffer, unsigned size) {
@@ -158,7 +233,7 @@ static int write_handler (int fd, const void *buffer, unsigned size) {
   } else {
     struct file_struct *write_file = get_file(fd);
     if (write_file != NULL) {
-      num_bytes_written = file_write(write_file->sysFile, buffer, size);
+      num_bytes_written = file_write(write_file->sys_file, buffer, size);
     }
   }
   lock_release(&file_lock);
@@ -166,15 +241,26 @@ static int write_handler (int fd, const void *buffer, unsigned size) {
 }
 
 static void seek_handler (int fd, unsigned position) {
-  return;
+  lock_acquire(&file_lock);
+  struct file_struct * file_seeking = get_file(fd);
+  file_seek(file_seeking->sysFile, position);
+  lock_release(&file_lock);
 }
 
 static unsigned tell_handler (int fd) {
-  return 0;
+  lock_acquire(&file_lock);
+  struct file_struct * file_telling = get_file(fd);
+  file_tell(file_telling->sysFile);
+  lock_release(&file_lock);
 }
 
 static void close_handler (int fd) {
-  return;
+  struct file_struct *f = get_file(fd);
+  if (f != NULL) {
+    list_remove(&f->elem);
+    file_close(f->sys_file);
+    free(f);
+  }
 }
 
 static int practice_handler (int i) {
@@ -186,42 +272,23 @@ syscall_handler (struct intr_frame *f UNUSED)
 {
   uint32_t* args = ((uint32_t*) f->esp);
   uint32_t* pd = thread_current()->pagedir;
-  int number_arguments[10]; /* number_arguments[syscall_number] gives the number of arguments for syscall */
-  number_arguments[SYS_HALT] = 0;
-  number_arguments[SYS_EXIT] = 1;
-  number_arguments[SYS_EXEC] = 1;
-  number_arguments[SYS_WAIT] = 1;
-  number_arguments[SYS_CREATE] = 2;
-  number_arguments[SYS_REMOVE] = 1;
-  number_arguments[SYS_OPEN] = 1;
-  number_arguments[SYS_FILESIZE] = 1;
-  number_arguments[SYS_READ] = 3;
-  number_arguments[SYS_WRITE] = 3;
-  number_arguments[SYS_SEEK] = 2;
-  number_arguments[SYS_TELL] = 1;
-  number_arguments[SYS_CLOSE] = 1;
-  number_arguments[SYS_PRACTICE] = 1;
   int syscall_number;
   int *physical_addr;
   if (!is_user_vaddr(args)) {
-    f->eax = -1;
     exit_handler(-1);
   } else {
     physical_addr = pagedir_get_page (pd, args);
     if (physical_addr == NULL) {
-      f->eax = -1;
       exit_handler(-1);
     }
     syscall_number = args[0];
     int i;
     for (i = 0; i <= number_arguments[syscall_number]; i++) {
       if (!is_user_vaddr(args + i)) {
-        f->eax = -1;
         exit_handler(-1);
       } else {
         physical_addr = pagedir_get_page (pd, args + i);
         if (physical_addr == NULL) {
-          f->eax = -1;
           exit_handler(-1);
         }
       }
@@ -268,6 +335,7 @@ syscall_handler (struct intr_frame *f UNUSED)
         break;
       case SYS_PRACTICE:
         f->eax = practice_handler ((int) args[1]);
+        break;
     }
   }
 }
