@@ -104,7 +104,9 @@ void exit_handler (int status) {
   /* iterate through children and remove this as their parent*/
   struct list_elem* e;
   struct list *childs = &thread_current()->child_processes;
+  int count = 0;
   for (e = list_begin(childs); e != list_end(childs); e = list_next(e)) {
+    count++;
     struct p_data* child = list_entry(e, struct p_data, elem);
     child->ref_count --;
     list_remove(e);
@@ -173,7 +175,7 @@ static int write_handler (int fd, const void *buffer, unsigned size) {
     struct file_struct *write_file = get_file(fd);
     if (write_file == NULL) {
       lock_release(&file_lock);
-      exit_handler(fd);
+      exit_handler(-1);
     }
     num_bytes_written = file_write(write_file->sysFile, buffer, size);
   }
@@ -227,6 +229,7 @@ syscall_handler (struct intr_frame *f UNUSED)
           exit_handler(-1);
         }
       }
+
     }
     switch (syscall_number) {
       case SYS_HALT:

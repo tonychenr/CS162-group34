@@ -212,6 +212,7 @@ thread_create (const char *name, int priority,
   sf->ebp = 0;
 
   struct p_data *shared = malloc(sizeof(struct p_data));
+  shared->exit_status = 0;
   sema_init(&shared->sema, 0);
   shared->child_pid = t->tid;
   t->exec_success = t->tid;

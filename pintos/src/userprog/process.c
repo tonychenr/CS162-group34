@@ -132,7 +132,7 @@ start_process (void *file_name_)
   for (i = counter - 1; i >= 0; i--) {
     if_.esp -= 4;
     curr_offset += strlen(passedArguments[i]) + 1;
-    *(char ***) if_.esp = initial_sp - curr_offset;
+    *(void **) if_.esp = initial_sp - curr_offset;
   }
 
   /* Push argv onto stack then push argc onto stack then push fake return address on stack*/
