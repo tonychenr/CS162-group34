@@ -1,0 +1,49 @@
+***---Final Report---***
+
+***Group 34***
+Prudhvi Lokireddy <prudhvil@berkeley.edu>
+Tony Chen <sirtony@berkeley.edu>
+Khalid Shakur <khalidshakur@berkeley.edu>
+Nick Wissman <nickwissman@berkeley.edu>
+
+***Changes to Initial Design***
+
+struct list child_processes;        /* A parent process can have many forked child processes */
+struct p_data *parent_data;         /* A process can have 1 parent process, thus 1 shared data structure */
+struct list files;                  /* List of files opened by this process */
+struct file_struct *executable;     /* File struct containing executable file of self */
+
+
+struct p_data {
+  struct list_elem elem;                /*Used to add to a list of p_data child processes*/
+  int exit_status;                      /*Exit code of child process*/
+  tid_t child_pid;                      /*Thread ID of the child process*/
+  struct thread *child_thread;          /* Pointer to child thread */
+  int exec_success;                     /* Return value for exec */
+  struct semaphore sema;                /*Initialized to 0. Downed when parent process waits on child*/
+  int ref_count;                        /*Number of processes using this p_data. Can be 0,1, or 2*/
+  struct semaphore exec_sema;           /* Initialized to 0. Used to synchronize exec */
+};
+
+struct file_struct {
+  struct file *sys_file;                /* Actual file struct in filesys/file.c */
+  int fd;                               /* File descriptor */
+  struct list_elem elem;                /* List elem for syscall file list */
+};
+
+For exec, we realized that it the function that loads the file and sets up the stack is start_process() and not process_execute(). process_execute() simply creates the thread. In order to synchronize this, we created an exec_sema inside the shared p_data struct. The success status of the loading was stored in exec_success in p_data.
+
+For file syscalls, we did not store the file descriptors in a hash table. Instead, each process kept a list of its open files, as discussed in the design review. To prevent writes to executables, each process kept track of the file containing its executable.
+
+Argument passing was handled as specified in the design doc and project spec.
+
+***What went well***
+The project got done. File syscalls were simple and easy to implement.
+Most of our final code was pretty similar to what was decided in the initial design doc.
+The design spec was very good at describing what needed to be done in a concise way and letting us know the resources Pintos provided to get our tasks done.
+
+
+***What could be improved***
+Communication and responsibility are an issue. The group needs to communicate better. When a member cannot complete a task by a certain time, that member needs to let everyone else know. Otherwise, we end up with very little done as the deadline approaches.
+The fact that tests depended on other parts compounded with the communication issues to make testing your code more difficult, as it depended on your partners’ code.
+
