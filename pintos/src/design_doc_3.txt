@@ -1,0 +1,208 @@
+CS 162
+Project 3: File Systems
+Design Document
+
+
+Fill in the following information:
+
+
+GSI:
+Group Number:
+Khalid Shakur <khalidshakur@berkeley.edu>
+Nick Wissman <nickwissman@berkeley.edu>
+Tony Chen <sirtony@berkeley.edu>
+Prudhvi Lokireddy <prudhvil@berkeley.edu>
+
+
+Preliminary Questions
+=====================
+
+1) If you have any preliminary comments on your submission or notes for
+   the TAs please give them here.
+
+2) Please cite any offline or online sources you consulted while preparing your
+   submission, other than the Pintos documentation, course text, lecture notes,
+   and course staff.
+
+Buffer Cache
+============
+The answers you see for buffer cache are not complete, feel free to add something but be aware these are my first pass answers.
+3) Copy here the declaration of each new or changed 'struct' or 'struct'
+   member, global or static variable, 'typedef', or enumeration. Identify the
+   purpose of each in 25 words or less.
+  // Represents contents of one sector from disk in the buffer cache
+  struct buff_entry {
+    int sector;
+    char dirty; // Necessary for the optional write to disk periodically aspect
+    char valid;
+    char use; // May be able to get by just using the valid bit 
+    struct lock exclusive_lock; /* Acquire before eviction, cannot acquire when a shared lock is held somewhere */
+char * data;
+struct shared_lock shared_lock; /* Acquire before accessing cache block */
+  };
+
+struct shared_lock {
+  struct lock* exclusive_lock; /* Exclusive lock of a cache entry. Acquire this lock when ref_count = 0, else increment ref_count. Prevents an exclusive lock from being acquired when the shared lock is held. */
+    uint32_t ref_count; /* Number of elements holding this lock */
+  };
+
+// Provided list object that will act as the cache object, caching (containing) buff_entry structs
+struct list * buff_cache;
+
+
+4) Describe how your cache replacement algorithm chooses a cache block to
+   evict.
+
+We will use the Clock Algorithm to choose a cache block to evict. Upon a cache miss and pulling a needed sector from disk, we will iterate over the linked list that is the buffer cache looking for cache entries that have their use bit set to not recently used. For entries whose use bit is set to recently used, we will set their use bit to not recently used and move on to the next entry. Once an entry is found that has not been recently used, as defined above, this entry will be evicted and replaced.
+
+5) An optional part of this project is making your buffer cache periodically
+   flush dirty blocks to disk. Describe a possible implementation strategy for
+   this feature.
+
+
+A possible implementation for this using timer_sleep() for part 1 of the project would involve spawning a new thread that looped through calling timer_sleep() and iterating over the linked list that is our cache, writing entries to disk whose dirty bit is set to 1 (dirty).
+
+6) An optional part of this project is implementing read-ahead caching for
+   files in your buffer cache. Describe a possible implementation strategy for
+   this feature.
+
+We could create a thread that waits on a semaphore, that is activated by processes performing reads. The process reading would sema_down and add the next sector of the file it is currently reading to a global list which would cause the thread waiting to look at this list and bring the block on the list into the buffer cache.
+
+
+
+
+7) When one process is actively reading or writing data in a buffer cache
+   block, how are other processes prevented from evicting that block?
+  
+Each entry in the cache will have a shared lock associated with it. For a process to evict an entry or block in the cache it must own the exclusive lock, therefore in this specific case, the process reading or writing data in the buffer would own the shared lock and prevent other processes from evicting the particular block through this ownership. This lock needs to be a shared lock in order to allow for multiple processes to access this block. The exclusive lock cannot be acquired and that process will be blocked until the shared lock is released by the other process.
+
+8) During the eviction of a block from the cache, how are other processes
+   prevented from attempting to access the block?
+  
+In the same way that processes evicting a block from the cache are prevented from interrupting processes reading or writing data from a particular block, processes evicting from the cache will own the entry’s exclusive lock, preventing any other processes from accessing the block.
+
+Indexed and Extensible Files
+============================
+
+9) Copy here the declaration of each new or changed 'struct' or 'struct' member,
+   global or static variable, 'typedef', or enumeration. Identify the purpose
+   of each in 25 words or less.
+
+
+struct inode_disk {
+  block_sector_t start;               /* First data sector. */
+  off_t length;                       /* File size in bytes. */
+  unsigned magic;                     /* Magic number. */
+  block_sector_t direct[8];    /* 8 Direct Block Pointers */
+  block_sector_t indirect[2];    /* Indirect and Doubly Indirect Pointers */
+  uint32_t unused[115];               /* Not used. */
+}
+
+
+struct indirect_block {
+  block_sector_t block;  /* Pointer to the indirect block */
+  uint32_t indirection_level; /* Level of indirect block (single or double) */
+  block_sector_t block_pointers[128]; /* Pointers to next level of blocks */
+}
+
+10) What is the maximum size of a file supported by your inode structure? Show
+    your work.
+
+Each indirect block contains 128 block_sector_t (block pointers). This is 2^7 block pointers. To get the maximum file size, we look at the doubly indirect pointer, indirect block pointer, and direct block pointers. The second level indirect block contains 128 pointers to indirect blocks. The first level indirect block contains 128 pointers to direct blocks. 
+
+For the doubly indirect block pointer, there are 128^2 = (2^7)^2 = 2^14 direct blocks. Each block is 2^9 B, so the total size is 2^9 * (2^14) B = 2^23 B = 8 MB.
+For the indirect block pointer, there are 128 = 2^7 direct blocks. The total size is 2^9 * (2^7) = 2^16 B = 64 KB.
+For the direct block pointers, there are 2^3 direct blocks. The total size is 2^9 * (2^3) = 2^12 B = 4 KB.
+Summing it all up this supports files of size 8MB + 68 KB.
+
+11) Explain how your code avoids a race if two processes attempt to extend a file
+    at the same time.
+
+We would include a lock on extending the file. With this lock, no two processes can extend a file at the same time..
+
+12) Suppose processes A and B both have file F open, both positioned at
+    end-of-file. If A reads and B writes F at the same time, A may read all,
+    part, or none of what B writes. However, A may not read data other than what
+    B writes, e.g. if B writes nonzero data, A is not allowed to see all zeros.
+    Explain how your code avoids this race.
+
+If a read goes past the EOF, it would need to acquire the EOF lock before reading.
+
+13) Is your synchronization design "fair"? If so, explain how your
+    synchronization design provides fairness. If not, explain how you could add
+    fairness to your design. File access is "fair" if readers cannot indefinitely
+    block writers or vice versa. That is, many processes reading from a file
+    cannot prevent forever another process from writing the file, and many
+    processes writing to a file cannot prevent another process forever from
+    reading the file.
+
+It is fair, reading can only be blocked when reading past EOF and a write is extending the file at the same time. The waiter list of a lock is simply FIFO, so the read will eventually be processed.
+
+14) Is your inode structure a multilevel index? If so, why did you choose this
+    particular combination of direct, indirect, and doubly indirect blocks? If
+    not, why did you choose an alternative inode structure, and what advantages
+    and disadvantages does your structure have, compared to a multilevel index?
+
+Our inode structure is a multilevel index. 8 direct block pointers can be placed inside a single page of memory, which is 4 KB. If a file at max uses only direct block pointers, it can fit in a single page of memory. This handles small file sizes. The indirect block pointer can be used for file sizes between 4 KB and 68 KB (64 KB from indirect block pointer and 4 KB from direct block pointers). This handles files of medium size. To handle large files (MB order of magnitude), we need a doubly indirect block pointer, though not all of the blocks in the doubly indirect block tree will be used, because there is metadata. The indirect block pointer extends the size by at most 8 MB.
+
+Subdirectories
+==============
+
+15) Copy here the declaration of each new or changed 'struct' or 'struct' member,
+    global or static variable, 'typedef', or enumeration. Identify the purpose
+    of each in 25 words or less.
+
+struct thread {
+  struct dir_struct* cwd; /* Current working directory if this thread */
+}
+
+struct dir_struct {
+  uint32_t fd; /* File descriptor for this directory */
+  struct dir * dir; /* Pointer to actual dir struct */
+}
+
+struct dir {
+  struct dir *parent_dir; /* Parent directory of this directory */
+  bool open; /* Set to true when in use, to prevent other processes from removing */
+}
+
+16) Describe your code for traversing a user-specified path. How do traversals
+    of absolute and relative paths differ?
+
+Absolute paths start with a slash. We would search iteratively through paths starting from the root. For relative paths, we would start at the directory of this thread and search the directories from there. If there is a ../, we would get the parent the dir.
+
+17) How do you prevent races on directory entries? For example, only one of two
+    simultaneous attempts to remove a single file should succeed, as should only
+    one of two simultaneous attempts to create a file with the same name, and so
+    on.
+
+We will add a lock to dir_entry, and wrap dir_add and dir_remove in acquire and release so that different processes cannot try to do it at the same time. This should ensure that files are only created/destroyed once.
+
+
+18) Does your implementation allow a directory to be removed if it is open by a
+    process or if it is in use as a process's current working directory? If so,
+    what happens to that process's future file system operations? If not, how do
+    you prevent it?
+
+We will prevent this. We will add a bool open to struct dir_struct which will be set to true when a process starts using it and false after it is done. If another process tries to remove a directory which has its open value set to true, we will just throw an error.
+
+
+19) Explain why you chose to represent the current directory of a process the
+    way you did.
+
+It simply makes use of the built in dir struct in directory.c and we need a fd to identify the open file descriptor for the directory. We can easily call functions in directory.c on this dir.
+
+Student Testing
+===============
+
+20) Describe your testing plan for your buffer cache. For each of your two test
+    cases, describe how your test works, describe the expected output, and if
+    you need any new syscalls to support your test, describe them.
+
+We believe the test ideas for the buffer cache outlined in the project specifications are decent and will most likely try to apply them to our implementation.
+
+In order to test and make sure blocks are being read into the cache and used properly, we will create a test program that will open a file and fill the buffer cache if read sequentially, then close it, reopen it, and read it sequentially again, checking to make sure that the second read sequence produces the appropriate amount of cache hits. In order to do this, we would have to create (or modify the read/write) syscalls to return global variables indicating the amount of cache hits and misses, to be incremented when lookups occur, and compare the results to expected values (the numbers should both be equal to the amount of entries in the cache and subsequently each other).
+
+Similarly, in order to test our cache’s ability to read and write appropriately, we could add read_counter and write_counter variables to each entry (or maybe more efficiently as global variables to the cache) and perform different reads and writes on files ensuring that the appropriate amount of reads and writes are counted. For example, as the spec. outlines we could write (200 blocks) to a file and check to make sure read_counter == 0 and write_counter = 200. We would need to have read_counter and write_counter returned by some syscalls in order for our test program to be able to access these values. 
+
+
