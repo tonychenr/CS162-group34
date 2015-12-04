@@ -36,6 +36,7 @@
 #include "devices/ide.h"
 #include "filesys/filesys.h"
 #include "filesys/fsutil.h"
+#include "filesys/cache.h"
 #endif
 
 /* Page directory with kernel mappings only. */
@@ -121,6 +122,8 @@ main (void)
   timer_calibrate ();
 
 #ifdef FILESYS
+  // Needed to start buffer cache usage
+  cache_init();
   /* Initialize file system. */
   ide_init ();
   locate_block_devices ();
