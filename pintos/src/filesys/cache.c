@@ -162,6 +162,12 @@ uint8_t * cache_write(struct inode * inode, block_sector_t sect) {
 	curr_block->writers--;
 	curr_block->use = 1;
 	curr_block->dirty = 1;
+	if (curr_block->writers > 0) {
+		cond_signal(&need_to_write, &modify_variables);
+	} else if (curr_block->readers == 0 && curr_block->writers == 0 && curr_block->evict_penders > 0) {
+		cond_signal(&need_to_evict, &modify_variables);
+	}
+	lock_release(&curr_block->modify_variables);
 	return ret_data
 }
 
