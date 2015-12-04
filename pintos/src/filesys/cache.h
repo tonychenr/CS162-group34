@@ -15,4 +15,4 @@ uint8_t * cache_read(struct inode * inode, block_sector_t sect);
 
 uint8_t * cache_write(struct inode * inode, block_sector_t sect);
 
-void cache_to_disk(struct cache_block* block_writing);
+// void cache_to_disk(struct cache_block* block_writing);
