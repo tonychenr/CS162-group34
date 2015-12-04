@@ -106,7 +106,8 @@ void cache_evict_block(struct cache_block* curr_block, struct inode* inode, bloc
 		}
 		if (curr_block->dirty) { 
 			lock_release(&curr_block->modify_variables);
-			cache_to_disk(curr_block);
+			block_write(fs_device, curr_block->sect, curr_block->data);
+			// cache_to_disk(curr_block); ACQUIRING LOCK NOT NECESSARY
 			lock_acquire(&curr_block->modify_variables);
 			curr_block->dirty = 0;
 		}
@@ -171,10 +172,10 @@ uint8_t * cache_write(struct inode * inode, block_sector_t sect) {
 	return ret_data
 }
 
-void cache_to_disk(struct cache_block* block_writing) {
-	// Need to check and change what lock should be acquired here
-	lock_acquire();
-	block_write(fs_device, block_writing->sect, block_writing->data);
-	lock_release();
-}
+// void cache_to_disk(struct cache_block* block_writing) {
+// 	// Need to check and change what lock should be acquired here
+// 	lock_acquire();
+// 	block_write(fs_device, block_writing->sect, block_writing->data);
+// 	lock_release();
+// }
 
