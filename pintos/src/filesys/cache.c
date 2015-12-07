@@ -1,5 +1,13 @@
 #include "filesys/cache.h"
+#include "filesys/filesys.h"
+#include <list.h>
+#include <debug.h>
+#include <stdio.h>
+#include <string.h>
 #include "devices/block.h"
+#include "threads/malloc.h"
+#include "threads/synch.h"
+
 
 // The "buffer cache" object (list of cache blocks)
 static struct list buffer_cache_entries;
@@ -9,23 +17,6 @@ static struct lock eviction_lock;
 
 // Used to implement the clock algorithm
 static struct list_elem *clock_hand;
-
-struct cache_block
-{
-	struct list_elem elem;
-	block_sector_t sect;
-	char dirty;
-	char valid;
-	uint32_t readers;
-	uint32_t writers;
-	uint32_t evict_penders;
-	struct lock modify_variables;
-	struct condition need_to_write;
-	struct condition need_to_evict;
-	char use;
-	struct inode *inode;
-	uint8_t *data;
-};
 
 void cache_init(void) 
 {
@@ -182,7 +173,7 @@ void cache_write_post(struct cache_block* curr_block) {
 
 /* Iterates through all cache entries, checks if an entry is valid and dirty,
 and writes the state to disk. */
-void cache_write_back_on_shutdown() {
+void cache_write_back_on_shutdown(void) {
 	struct list_elem* e;
 	e = list_begin(&buffer_cache_entries);
 	int count = 1;
