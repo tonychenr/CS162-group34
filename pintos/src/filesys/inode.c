@@ -220,7 +220,7 @@ inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset)
       int chunk_size = size < min_left ? size : min_left;
       if (chunk_size <= 0)
         break;
-      struct * temp_curr_block;
+      struct cache_block * temp_curr_block;
       temp_curr_block = cache_read_pre(inode, sector_idx);
       bounce = temp_curr_block->data;
       memcpy (buffer + bytes_read, bounce + sector_ofs, chunk_size);

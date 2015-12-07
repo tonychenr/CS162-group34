@@ -1,3 +1,4 @@
+#include "threads/synch.h"
 #include "filesys/cache.h"
 #include "filesys/filesys.h"
 #include <list.h>
@@ -6,7 +7,7 @@
 #include <string.h>
 #include "devices/block.h"
 #include "threads/malloc.h"
-#include "threads/synch.h"
+
 
 
 // The "buffer cache" object (list of cache blocks)
@@ -22,23 +23,23 @@ void cache_init(void)
 {
 	list_init(&buffer_cache_entries);
 	lock_init(&eviction_lock);
-	clock_hand = list_begin(&buff_cache_entries);
+	clock_hand = list_begin(&buffer_cache_entries);
 	// Create 64 entries in the buffer cache
 	int i;
 	for (i = 1; i <= 64; i++) 
 	{
 		struct cache_block * curr_block = malloc(sizeof(struct cache_block));
-		curr_block->data = malloc(BUFFER_SECTOR_SIZE);
+		curr_block->data = malloc(BLOCK_SECTOR_SIZE);
 		curr_block->dirty = 0;
 		curr_block->valid = 0;
 		curr_block->readers = 0;
 		curr_block->writers = 0;
 		curr_block->evict_penders = 0;
 		lock_init(&curr_block->modify_variables);
-		condition_init(&curr_block->need_to_write);
-		condition_init(&curr_block->need_to_evict);
+		cond_init(&curr_block->need_to_write);
+		cond_init(&curr_block->need_to_evict);
 		curr_block->use = 0;
-		list_push_back(&buff_cache_entries, &curr_block->elem);
+		list_push_back(&buffer_cache_entries, &curr_block->elem);
 	}
 }
 
@@ -55,7 +56,7 @@ void cache_find_block(struct cache_block * curr_block, struct inode * inode,
 		curr_block = list_entry(e, struct cache_block, elem);
 		if (curr_block->inode == inode && curr_block->sect == sect) {
  			lock_acquire(&curr_block->modify_variables);
- 			if (curr_block->inode == inode && curr_block_>sect == sect && curr_block->valid) {
+ 			if (curr_block->inode == inode && curr_block->sect == sect && curr_block->valid) {
  				break;
  			}
  			lock_release(&curr_block->modify_variables);
@@ -82,7 +83,7 @@ void cache_evict_block(struct cache_block* curr_block, struct inode* inode, bloc
 				if (curr_block->use == 0) {
 					curr_block->valid = 0;
 					clock_hand = list_next(clock_hand);
-					break
+					break;
 				} else {
 					// Changed between acquiring the lock and checking the first time
 					lock_release(&curr_block->modify_variables);
@@ -91,7 +92,7 @@ void cache_evict_block(struct cache_block* curr_block, struct inode* inode, bloc
 			}
 		}
 		// At this point we found an entry to evict and the process owns its modify_variables lock and it has been marked invalid
-		if (readers != 0 || writers != 0) {
+		if (curr_block->readers != 0 || curr_block->writers != 0) {
 			curr_block->evict_penders++;
 			cond_wait(&curr_block->need_to_evict, &curr_block->modify_variables);
 			curr_block->evict_penders--;
@@ -110,7 +111,7 @@ void cache_evict_block(struct cache_block* curr_block, struct inode* inode, bloc
 		lock_acquire(&curr_block->modify_variables);
 		curr_block->inode = inode;
 		curr_block->sect = sect;
-		curr_block->data = buffer;
+		// curr_block->data = buffer;
 		curr_block->valid = 1;
 	}
 	lock_release(&eviction_lock);
@@ -118,7 +119,7 @@ void cache_evict_block(struct cache_block* curr_block, struct inode* inode, bloc
 	
 struct cache_block * cache_read_pre(struct inode * inode, block_sector_t sect) {
 	struct cache_block* curr_block;
-	uint8_t * ret_data;
+	// uint8_t * ret_data;
 	cache_find_block(curr_block, inode, sect);
 	if (curr_block == NULL) {
 		// eviction needs to occurs
@@ -135,7 +136,7 @@ void cache_read_post(struct cache_block * curr_block) {
 	curr_block->readers--;
 	curr_block->use = 1;
 	if (curr_block->readers == 0 && curr_block->writers == 0 && curr_block->evict_penders > 0) {
-		cond_signal(&need_to_evict, &modify_variables);
+		cond_signal(&curr_block->need_to_evict, &curr_block->modify_variables);
 	}
 	lock_release(&curr_block->modify_variables);
 }
@@ -144,7 +145,7 @@ void cache_read_post(struct cache_block * curr_block) {
 
 struct cache_block * cache_write_pre(struct inode * inode, block_sector_t sect) {
 	struct cache_block* curr_block;
-	uint8_t ret_data;
+	// uint8_t ret_data;
 	cache_find_block(curr_block, inode, sect);
 	if (curr_block == NULL) {
 		cache_evict_block(curr_block, inode, sect);
@@ -164,9 +165,9 @@ void cache_write_post(struct cache_block* curr_block) {
 	curr_block->use = 1;
 	curr_block->dirty = 1;
 	if (curr_block->writers > 0) {
-		cond_signal(&need_to_write, &modify_variables);
+		cond_signal(&curr_block->need_to_write, &curr_block->modify_variables);
 	} else if (curr_block->readers == 0 && curr_block->writers == 0 && curr_block->evict_penders > 0) {
-		cond_signal(&need_to_evict, &modify_variables);
+		cond_signal(&curr_block->need_to_evict, &curr_block->modify_variables);
 	}
 	lock_release(&curr_block->modify_variables);
 }
@@ -175,13 +176,14 @@ void cache_write_post(struct cache_block* curr_block) {
 and writes the state to disk. */
 void cache_write_back_on_shutdown(void) {
 	struct list_elem* e;
+	struct cache_block * curr_block;
 	e = list_begin(&buffer_cache_entries);
 	int count = 1;
-	while (counter <= 64) {
+	while (count <= 64) {
 		curr_block = list_entry(e, struct cache_block, elem);
 		lock_acquire(&curr_block->modify_variables);
 		if (curr_block->writers > 0) {
-			cond_wait(&curr_block->need_to_write);
+			cond_wait(&curr_block->need_to_write, &curr_block->modify_variables);
 		}
 		curr_block->writers++;
 		if (curr_block->valid && curr_block->dirty) {
