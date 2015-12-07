@@ -37,6 +37,7 @@ void cache_init(void)
 	for (i = 1; i <= 64; i++) 
 	{
 		struct cache_block * curr_block = malloc(sizeof(struct cache_block));
+		curr_block->data = malloc(BUFFER_SECTOR_SIZE);
 		curr_block->dirty = 0;
 		curr_block->valid = 0;
 		curr_block->readers = 0;
@@ -112,8 +113,9 @@ void cache_evict_block(struct cache_block* curr_block, struct inode* inode, bloc
 			curr_block->dirty = 0;
 		}
 		lock_release(&curr_block->modify_variables);
-		uint8_t * buffer = malloc(BUFFER_SECTOR_SIZE);
-		block_read(fs_device, sect, buffer);
+		// Read directly into the cache without the lock since nothing can modify this entry due to it being invalid 
+		// Should not be a sychronization problem
+		block_read(fs_device, sect, curr_block->data);
 		lock_acquire(&curr_block->modify_variables);
 		curr_block->inode = inode;
 		curr_block->sect = sect;
@@ -123,7 +125,7 @@ void cache_evict_block(struct cache_block* curr_block, struct inode* inode, bloc
 	lock_release(&eviction_lock);
 }
 	
-uint8_t * cache_read(struct inode * inode, block_sector_t sect) {
+struct cache_block * cache_read_pre(struct inode * inode, block_sector_t sect) {
 	struct cache_block* curr_block;
 	uint8_t * ret_data;
 	cache_find_block(curr_block, inode, sect);
@@ -134,7 +136,10 @@ uint8_t * cache_read(struct inode * inode, block_sector_t sect) {
 	// Block has been found valid in the cache and this process now owns the entries lock
 	curr_block->readers++;
 	lock_release(&curr_block->modify_variables);
-	ret_data = curr_block->data;
+	return curr_block;
+}
+
+void cache_read_post(struct cache_block * curr_block) {
 	lock_acquire(&curr_block->modify_variables);
 	curr_block->readers--;
 	curr_block->use = 1;
@@ -142,10 +147,11 @@ uint8_t * cache_read(struct inode * inode, block_sector_t sect) {
 		cond_signal(&need_to_evict, &modify_variables);
 	}
 	lock_release(&curr_block->modify_variables);
-	return ret_data;
 }
 
-uint8_t * cache_write(struct inode * inode, block_sector_t sect) {
+
+
+struct cache_block * cache_write_pre(struct inode * inode, block_sector_t sect) {
 	struct cache_block* curr_block;
 	uint8_t ret_data;
 	cache_find_block(curr_block, inode, sect);
@@ -158,7 +164,10 @@ uint8_t * cache_write(struct inode * inode, block_sector_t sect) {
 	}
 	curr_block->writers++;
 	lock_release(&curr_block->modify_variables);
-	ret_data = curr_block->data;
+	return curr_block;
+}
+
+void cache_write_post(struct cache_block* curr_block) {
 	lock_acquire(&curr_block->modify_variables);
 	curr_block->writers--;
 	curr_block->use = 1;
@@ -169,13 +178,26 @@ uint8_t * cache_write(struct inode * inode, block_sector_t sect) {
 		cond_signal(&need_to_evict, &modify_variables);
 	}
 	lock_release(&curr_block->modify_variables);
-	return ret_data
 }
 
-// void cache_to_disk(struct cache_block* block_writing) {
-// 	// Need to check and change what lock should be acquired here
-// 	lock_acquire();
-// 	block_write(fs_device, block_writing->sect, block_writing->data);
-// 	lock_release();
-// }
-
+/* Iterates through all cache entries, checks if an entry is valid and dirty,
+and writes the state to disk. */
+void cache_write_back_on_shutdown() {
+	struct list_elem* e;
+	e = list_begin(&buffer_cache_entries);
+	int count = 1;
+	while (counter <= 64) {
+		curr_block = list_entry(e, struct cache_block, elem);
+		lock_acquire(&curr_block->modify_variables);
+		if (curr_block->writers > 0) {
+			cond_wait(&curr_block->need_to_write);
+		}
+		curr_block->writers++;
+		if (curr_block->valid && curr_block->dirty) {
+			lock_release(&curr_block->modify_variables);
+			block_write(fs_device, curr_block->sect, curr_block->data);
+ 		}
+ 		e = list_next(e);
+ 		count++;
+	}
+}
