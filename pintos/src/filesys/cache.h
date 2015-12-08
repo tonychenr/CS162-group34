@@ -6,15 +6,16 @@ struct cache_block
 {
 	struct list_elem elem;
 	block_sector_t sect;
-	char dirty;
-	char valid;
-	uint32_t readers;
-	uint32_t writers;
+	char dirty; /* If dirty, write back to disk before eviction */
+	char valid; /* Indicates whether block is valid */
+	uint32_t readers; /* Can have multiple readers */
+	uint32_t writers; /* Should only have 1 writer */
+	uint32_t write_penders; /* Writers waiting to write */
 	uint32_t evict_penders;
 	struct lock modify_variables;
 	struct condition need_to_write;
 	struct condition need_to_evict;
-	char use;
+	char use; /* Indicates whether block has been used recently */
 	struct inode *inode;
 	uint8_t *data;
 };
