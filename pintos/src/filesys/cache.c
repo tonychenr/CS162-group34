@@ -47,16 +47,15 @@ void cache_init(void)
 	If curr_block is in the cache, this function locates and returns the block. Return NULL otherwise
 	THIS FUNCTION RETURNS POSSESSING AN ENTRIES LOCK
 */
-void cache_find_block(struct cache_block * curr_block, struct inode * inode, 
-										block_sector_t sect)
+void cache_find_block(struct cache_block * curr_block, block_sector_t sect)
 {
 	struct list_elem* e;
 	e = list_begin(&buffer_cache_entries);
 	while (true) {
 		curr_block = list_entry(e, struct cache_block, elem);
-		if (curr_block->inode == inode && curr_block->sect == sect) {
+		if (curr_block->sect == sect) {
  			lock_acquire(&curr_block->modify_variables);
- 			if (curr_block->inode == inode && curr_block->sect == sect && curr_block->valid) {
+ 			if (curr_block->sect == sect && curr_block->valid) {
  				break;
  			}
  			lock_release(&curr_block->modify_variables);
@@ -66,9 +65,9 @@ void cache_find_block(struct cache_block * curr_block, struct inode * inode,
 	}
 }
 
-void cache_evict_block(struct cache_block* curr_block, struct inode* inode, block_sector_t sect) 
+void cache_evict_block(struct cache_block* curr_block, block_sector_t sect) 
 {
-	cache_find_block(curr_block, inode, sect);
+	cache_find_block(curr_block, sect);
 	if (curr_block == NULL) {
 		while (true) {
 			curr_block = list_entry(clock_hand, struct cache_block, elem);
@@ -110,21 +109,20 @@ void cache_evict_block(struct cache_block* curr_block, struct inode* inode, bloc
 		// Should not be a sychronization problem
 		block_read(fs_device, sect, curr_block->data);
 		lock_acquire(&curr_block->modify_variables);
-		curr_block->inode = inode;
 		curr_block->sect = sect;
 		// curr_block->data = buffer;
 		curr_block->valid = 1;
 	}
 }
 	
-struct cache_block * cache_read_pre(struct inode * inode, block_sector_t sect) {
+struct cache_block * cache_read_pre(block_sector_t sect) {
 	struct cache_block* curr_block;
 	// uint8_t * ret_data;
 	lock_acquire(&eviction_lock);
-	cache_find_block(curr_block, inode, sect);
+	cache_find_block(curr_block, sect);
 	if (curr_block == NULL) {
 		// eviction needs to occurs
-		cache_evict_block(curr_block, inode, sect);
+		cache_evict_block(curr_block, sect);
 	}
 	// Block has been found valid in the cache and this process now owns the entries lock
 	curr_block->readers++;
@@ -145,13 +143,13 @@ void cache_read_post(struct cache_block * curr_block) {
 
 
 
-struct cache_block * cache_write_pre(struct inode * inode, block_sector_t sect) {
+struct cache_block * cache_write_pre(block_sector_t sect) {
 	struct cache_block* curr_block;
 	// uint8_t ret_data;
 	lock_acquire(&eviction_lock);
-	cache_find_block(curr_block, inode, sect);
+	cache_find_block(curr_block, sect);
 	if (curr_block == NULL) {
-		cache_evict_block(curr_block, inode, sect);
+		cache_evict_block(curr_block, sect);
 	}
 	// Block has been found valid in the cache and this process now owns the entires lock
 	if (curr_block->writers > 0) {

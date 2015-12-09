@@ -16,22 +16,21 @@ struct cache_block
 	struct condition need_to_write;
 	struct condition need_to_evict;
 	char use; /* Indicates whether block has been used recently */
-	struct inode *inode;
-	uint8_t *data;
+	char data[0];
 };
 
 // Initializes cache including a bitmap that makes finding unused cache entries easy
 void cache_init(void);
 
-void cache_find_block(struct cache_block * curr_block, struct inode * inode, block_sector_t sect);
+void cache_find_block(struct cache_block * curr_block, block_sector_t sect);
 
-void cache_evict_block(struct cache_block* curr_block, struct inode* inode, block_sector_t sect);
+void cache_evict_block(struct cache_block* curr_block, block_sector_t sect);
 
-struct cache_block * cache_read_pre(struct inode * inode, block_sector_t sect);
+struct cache_block * cache_read_pre(block_sector_t sect);
 
 void cache_read_post(struct cache_block *);
 
-struct cache_block * cache_write_pre(struct inode * inode, block_sector_t sect);
+struct cache_block * cache_write_pre(block_sector_t sect);
 
 void cache_write_post(struct cache_block *);
 
