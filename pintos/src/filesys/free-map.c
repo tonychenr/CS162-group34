@@ -53,10 +53,12 @@ void
 free_map_open (void) 
 {
   free_map_file = file_open (inode_open (FREE_MAP_SECTOR));
+  printf("free_map_file opened");
   if (free_map_file == NULL)
     PANIC ("can't open free map");
   if (!bitmap_read (free_map, free_map_file))
     PANIC ("can't read free map");
+  printf("read free_map");
 }
 
 /* Writes the free map to disk and closes the free map file. */

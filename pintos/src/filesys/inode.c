@@ -47,12 +47,24 @@ struct inode
   };
 
 
+static bool set_indirect_block (block_sector_t indirect) {
+  uint8_t *bounce = malloc (BLOCK_SECTOR_SIZE);
+  if (bounce == NULL)
+    return false;
+  memset (bounce, -1, BLOCK_SECTOR_SIZE);
+  block_write(fs_device, indirect, bounce);
+  free(bounce);
+  return true;
+}
+
+static void set_direct_block (block_sector_t direct) {
+  static char zeros[BLOCK_SECTOR_SIZE];
+  block_write (fs_device, direct, zeros);
+}
+
 static block_sector_t allocate_block (void) {
   block_sector_t block_sector;
-  static char zeros[BLOCK_SECTOR_SIZE];
-  if (free_map_allocate(1, &block_sector)) {
-    block_write (fs_device, block_sector, zeros);
-  }
+  free_map_allocate(1, &block_sector);
   return block_sector;
 }
 
@@ -60,18 +72,23 @@ static block_sector_t allocate_block_direct (struct inode_disk *disk_inode, size
   block_sector_t block_sector = disk_inode->direct[sectors];
   if (block_sector == UNALLOCATED_SECTOR) {
     block_sector =  allocate_block();
+    set_direct_block(block_sector);
     disk_inode->direct[sectors] = block_sector;
   }
   return block_sector;
 }
 
-static block_sector_t handle_indirect (struct cache_block *temp_curr_block, size_t index) {
+static block_sector_t handle_indirect (struct cache_block *temp_curr_block, size_t index, uint8_t indirection_level) {
   block_sector_t block_sector;
 
   block_sector_t *indirect_block = (block_sector_t *) temp_curr_block->data;
   block_sector = indirect_block[index];
   if (block_sector == UNALLOCATED_SECTOR) {
       block_sector = allocate_block();
+      if (indirection_level == 2)
+        set_indirect_block(block_sector);
+      else
+        set_direct_block(block_sector);
       indirect_block[index] = block_sector;
   }
 
@@ -92,21 +109,23 @@ byte_to_sector (const struct inode *inode, off_t pos)
   size_t sectors = pos / BLOCK_SECTOR_SIZE;
   if (sectors < DIRECT_POINTER_COUNT) {
     block_sector = allocate_block_direct(disk_inode, sectors);
-    cache_shared_post(temp_curr_block, 0);
+    cache_shared_post(temp_curr_block, 1);
   } else {
     sectors -= DIRECT_POINTER_COUNT;
     if (sectors < INDIRECT_BLOCK_POINTER_COUNT) {
       block_sector_t indirect = disk_inode->indirect[0];
       if (indirect == UNALLOCATED_SECTOR) {
         indirect = allocate_block();
+        set_indirect_block(indirect);
         disk_inode->indirect[0] = indirect;
       }
-      cache_shared_post(temp_curr_block, 0);
+      cache_shared_post(temp_curr_block, 1);
       if (indirect != UNALLOCATED_SECTOR) {
         temp_curr_block = cache_shared_pre(indirect);
-        block_sector = handle_indirect(temp_curr_block, sectors);
-        cache_shared_post(temp_curr_block, 0);
+        block_sector = handle_indirect(temp_curr_block, sectors, 1);
+        cache_shared_post(temp_curr_block, 1);
       }
+      // printf("byte_to_sector: inode_sector=%u, pos=%u, sectors= %u, indirect=%u, allocated=%u\n", inode->sector, pos, sectors, indirect, block_sector);
     } else {
       sectors -= INDIRECT_BLOCK_POINTER_COUNT;
       size_t offset = sectors % INDIRECT_BLOCK_POINTER_COUNT;
@@ -114,19 +133,20 @@ byte_to_sector (const struct inode *inode, off_t pos)
       block_sector_t doubly_indirect = disk_inode->indirect[1];
       if (doubly_indirect == UNALLOCATED_SECTOR) {
         doubly_indirect = allocate_block();
+        set_indirect_block(doubly_indirect);
         disk_inode->indirect[1] = doubly_indirect;
       }
-      cache_shared_post(temp_curr_block, 0);
+      cache_shared_post(temp_curr_block, 1);
 
       if (doubly_indirect != UNALLOCATED_SECTOR) {
         temp_curr_block = cache_shared_pre(doubly_indirect);
-        block_sector_t indirect = handle_indirect(temp_curr_block, sectors);
-        cache_shared_post(temp_curr_block, 0);
+        block_sector_t indirect = handle_indirect(temp_curr_block, sectors, 2);
+        cache_shared_post(temp_curr_block, 1);
 
         if (indirect != UNALLOCATED_SECTOR) {
           temp_curr_block = cache_shared_pre(indirect);
-          block_sector = handle_indirect(temp_curr_block, offset);
-          cache_shared_post(temp_curr_block, 0);
+          block_sector = handle_indirect(temp_curr_block, offset, 1);
+          cache_shared_post(temp_curr_block, 1);
         }
       }
     }
@@ -326,7 +346,7 @@ inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset)
       off_t inode_left = inode_length (inode) - offset;
       int sector_left = BLOCK_SECTOR_SIZE - sector_ofs;
       int min_left = inode_left < sector_left ? inode_left : sector_left;
-      printf("sector=%u, inode_left= %u, sector_left=%u\n", sector_idx, inode_left, sector_left);
+      // printf("size=%u, sector=%u, offset=%u, byte_to_sector=%u, inode_left= %u, sector_left=%u\n", size, inode->sector, offset, sector_idx, inode_left, sector_left);
       /* Number of bytes to actually copy out of this sector. */
       int chunk_size = size < min_left ? size : min_left;
       if (chunk_size <= 0)
@@ -361,6 +381,7 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
 
   if (inode->deny_write_cnt)
     return 0;
+  // printf("write call: size=%u\n", size);
   while (size > 0) 
     {
       /* Sector to write, starting byte offset within sector. */
@@ -371,7 +392,7 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
 
       /* Bytes left in inode, bytes left in sector, lesser of the two. */
       int sector_left = BLOCK_SECTOR_SIZE - sector_ofs;
-
+      // printf("write: size=%u, sector=%u, offset=%u, byte_to_sector=%u, sector_left=%u\n", size, inode->sector, offset, sector_idx, sector_left);
       /* Number of bytes to actually write into this sector. */
       int chunk_size = size < sector_left ? size : sector_left;
       if (chunk_size <= 0)
