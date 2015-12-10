@@ -44,8 +44,9 @@ void cache_init(void)
 	If curr_block is in the cache, this function locates and returns the block. Return NULL otherwise
 	THIS FUNCTION RETURNS POSSESSING AN ENTRIES LOCK
 */
-void cache_find_block(struct cache_block * curr_block, block_sector_t sect)
+struct cache_block *cache_find_block(block_sector_t sect)
 {
+	struct cache_block * curr_block = NULL;
 	struct list_elem* e;
 	for (e = list_begin (&buffer_cache_entries); e != list_end (&buffer_cache_entries); e = list_next (e)) {
 		curr_block = list_entry(e, struct cache_block, elem);
@@ -56,12 +57,13 @@ void cache_find_block(struct cache_block * curr_block, block_sector_t sect)
  		lock_release(&curr_block->modify_variables);
  		curr_block = NULL;
 	}
+	return curr_block;
 }
 
-void cache_evict_block(struct cache_block* curr_block, block_sector_t sect) 
+struct cache_block * cache_evict_block(block_sector_t sect) 
 {
 	lock_acquire(&eviction_lock);
-	cache_find_block(curr_block, sect);
+	struct cache_block * curr_block = cache_find_block(sect);
 	if (curr_block == NULL) {
 		while (true) {
 			if (clock_hand == list_end(&buffer_cache_entries)) {
@@ -79,15 +81,13 @@ void cache_evict_block(struct cache_block* curr_block, block_sector_t sect)
 			}
 		}
 		// At this point we found an entry to evict and the process owns its modify_variables lock and it has been marked invalid
-		if (curr_block->accessors > 0) {
-			curr_block->evict_penders++;
-		}
-		while (curr_block->accessors > 0) {
-			cond_wait(&curr_block->need_to_evict, &curr_block->modify_variables);
-		}
+		curr_block->evict_penders++;
+		// while (curr_block->accessors > 0) {
+		// 	cond_wait(&curr_block->need_to_evict, &curr_block->modify_variables);
+		// }
 		curr_block->evict_penders--;
 		if (curr_block->dirty && curr_block->valid) {
-			curr_block->valid = 0; 
+			curr_block->valid = 0;
 			block_write(fs_device, curr_block->sect, curr_block->data);
 			// cache_to_disk(curr_block); ACQUIRING LOCK NOT NECESSARY
 			curr_block->dirty = 0;
@@ -101,15 +101,14 @@ void cache_evict_block(struct cache_block* curr_block, block_sector_t sect)
 		curr_block->use = 0;
 	}
 	lock_release(&eviction_lock);
+	return curr_block;
 }
 	
 struct cache_block * cache_shared_pre(block_sector_t sect) {
-	struct cache_block* curr_block = NULL;
-	// uint8_t * ret_data;
-	cache_find_block(curr_block, sect);
+	struct cache_block* curr_block = cache_find_block(sect);
 	if (curr_block == NULL) {
 		// eviction needs to occurs
-		cache_evict_block(curr_block, sect);
+		curr_block = cache_evict_block(sect);
 	}
 	// Block has been found valid in the cache and this process now owns the entries lock
 	curr_block->accessors++;
@@ -122,11 +121,10 @@ void cache_shared_post(struct cache_block * curr_block, uint8_t dirty) {
 	if (curr_block->sect)
 	curr_block->accessors--;
 	curr_block->use = 1;
-	if (dirty)
+	if (dirty) {
 		curr_block->dirty = dirty;
-	if (curr_block->accessors == 0 && curr_block->evict_penders > 0) {
-		cond_signal(&curr_block->need_to_evict, &curr_block->modify_variables);
 	}
+	// cond_signal(&curr_block->need_to_evict, &curr_block->modify_variables);
 	lock_release(&curr_block->modify_variables);
 }
 
@@ -175,13 +173,11 @@ void cache_write_back_on_shutdown(void) {
 	for (e = list_begin (&buffer_cache_entries); e != list_end (&buffer_cache_entries); e = list_next (e)) {
 		curr_block = list_entry(e, struct cache_block, elem);
 		lock_acquire(&curr_block->modify_variables);
-		if (curr_block->accessors > 0) {
-			curr_block->evict_penders++;
-		}
-		while (curr_block->accessors > 0) {
-			cond_wait(&curr_block->need_to_evict, &curr_block->modify_variables);
-		}
-		curr_block->evict_penders--;
+		// curr_block->evict_penders++;
+		// while (curr_block->accessors > 0) {
+		// 	cond_wait(&curr_block->need_to_evict, &curr_block->modify_variables);
+		// }
+		// curr_block->evict_penders--;
 		if (curr_block->valid && curr_block->dirty) {
 			block_write(fs_device, curr_block->sect, curr_block->data);
  		}
@@ -190,8 +186,7 @@ void cache_write_back_on_shutdown(void) {
 }
 
 void cache_invalidate_block(block_sector_t sector) {
-	struct cache_block *curr_block = NULL;
-	cache_find_block(curr_block, sector);
+	struct cache_block * curr_block = cache_find_block(sector);
 	if (curr_block != NULL) {
 		curr_block->valid = 0;
 		lock_release(&curr_block->modify_variables);
