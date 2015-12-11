@@ -100,7 +100,7 @@ do_format (void)
   free_map_create ();
   if (!dir_create (ROOT_DIR_SECTOR, 16))
     PANIC ("root directory creation failed");
-  printf("dir created");
+  printf("dir created\n");
   free_map_close ();
   printf ("done.\n");
 }

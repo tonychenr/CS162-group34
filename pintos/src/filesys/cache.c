@@ -82,9 +82,9 @@ struct cache_block * cache_evict_block(block_sector_t sect)
 		}
 		// At this point we found an entry to evict and the process owns its modify_variables lock and it has been marked invalid
 		curr_block->evict_penders++;
-		// while (curr_block->accessors > 0) {
-		// 	cond_wait(&curr_block->need_to_evict, &curr_block->modify_variables);
-		// }
+		while (curr_block->accessors > 0) {
+			cond_wait(&curr_block->need_to_evict, &curr_block->modify_variables);
+		}
 		curr_block->evict_penders--;
 		if (curr_block->dirty && curr_block->valid) {
 			curr_block->valid = 0;
@@ -120,13 +120,12 @@ struct cache_block * cache_shared_pre(block_sector_t sect) {
 
 void cache_shared_post(struct cache_block * curr_block, uint8_t dirty) {
 	lock_acquire(&curr_block->modify_variables);
-	if (curr_block->sect)
 	curr_block->accessors--;
 	curr_block->use = 1;
 	if (dirty) {
 		curr_block->dirty = dirty;
 	}
-	// cond_signal(&curr_block->need_to_evict, &curr_block->modify_variables);
+	cond_signal(&curr_block->need_to_evict, &curr_block->modify_variables);
 	lock_release(&curr_block->modify_variables);
 }
 
@@ -175,11 +174,11 @@ void cache_write_back_on_shutdown(void) {
 	for (e = list_begin (&buffer_cache_entries); e != list_end (&buffer_cache_entries); e = list_next (e)) {
 		curr_block = list_entry(e, struct cache_block, elem);
 		lock_acquire(&curr_block->modify_variables);
-		// curr_block->evict_penders++;
-		// while (curr_block->accessors > 0) {
-		// 	cond_wait(&curr_block->need_to_evict, &curr_block->modify_variables);
-		// }
-		// curr_block->evict_penders--;
+		curr_block->evict_penders++;
+		while (curr_block->accessors > 0) {
+			cond_wait(&curr_block->need_to_evict, &curr_block->modify_variables);
+		}
+		curr_block->evict_penders--;
 		if (curr_block->valid && curr_block->dirty) {
 			block_write(fs_device, curr_block->sect, curr_block->data);
  		}

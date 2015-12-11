@@ -47,14 +47,13 @@ struct inode
   };
 
 
-static bool set_indirect_block (block_sector_t indirect) {
+static void set_indirect_block (block_sector_t indirect) {
   uint8_t *bounce = malloc (BLOCK_SECTOR_SIZE);
   if (bounce == NULL)
-    return false;
+    return;
   memset (bounce, -1, BLOCK_SECTOR_SIZE);
   block_write(fs_device, indirect, bounce);
   free(bounce);
-  return true;
 }
 
 static void set_direct_block (block_sector_t direct) {
@@ -151,6 +150,7 @@ byte_to_sector (const struct inode *inode, off_t pos)
       }
     }
   }
+  
   // printf("byte_to_sector: block_sector=%u\n", block_sector);
   return block_sector;
 }
@@ -402,9 +402,6 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
       struct cache_block * temp_curr_block;
       temp_curr_block = cache_shared_pre(sector_idx);
       bounce = temp_curr_block->data;
-      if (sector_ofs <= 0 && chunk_size >= sector_left) {
-        memset (bounce, 0, BLOCK_SECTOR_SIZE);
-      }
       memcpy (bounce + sector_ofs, buffer + bytes_written, chunk_size);
       cache_shared_post(temp_curr_block, 1);
 

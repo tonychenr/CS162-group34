@@ -34,7 +34,6 @@ static unsigned tell_handler (int fd);
 static void close_handler (int fd);
 static int practice_handler (int i);
 
-static struct lock file_lock; /* Lock accessing file system */
 static struct lock ref_count_lock; /* Lock for accessing ref_count in shared data */
 static int number_arguments[14]; /* number_arguments[syscall_number] gives the number of arguments for syscall */
 static int global_fd; /* Index of file descriptors */
@@ -63,7 +62,6 @@ void
 syscall_init (void) 
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
-  lock_init(&file_lock);
   lock_init(&ref_count_lock);
   number_arguments[SYS_HALT] = 0;
   number_arguments[SYS_EXIT] = 1;
@@ -153,51 +151,40 @@ static bool create_handler (const char *file, unsigned initial_size) {
   if (file == NULL) {
     exit_handler(-1);
   }
-  lock_acquire(&file_lock);
   bool created = filesys_create(file, initial_size); 
-  lock_release(&file_lock);
   return created;
 }
 
 static bool remove_handler (const char *file) {
-  lock_acquire(&file_lock);
   bool destroyed = filesys_remove(file);
-  lock_release(&file_lock);
   return destroyed;
 }
 
 static int open_handler (const char *file) {
-  lock_acquire(&file_lock);
   if (file == NULL) {
-    lock_release(&file_lock);
     return -1;
   }
   struct file *f = filesys_open(file);
   struct thread *t = thread_current();
   if (f == NULL) {
-    lock_release(&file_lock);
     return -1;
   }
   struct file_struct *fstruct = malloc(sizeof(struct file_struct));
   if (fstruct == NULL) {
     file_close(f);
-    lock_release(&file_lock);
     return -1;
   }
   list_push_back(&t->files, &fstruct->elem);
   fstruct->fd = create_fd();
   fstruct->sys_file = f;
-  lock_release(&file_lock);
   return fstruct->fd;
 }
 
 static int filesize_handler (int fd) {
   struct file_struct * file_sizing;
   int size;
-  lock_acquire(&file_lock);
   file_sizing = get_file(fd);
   size = file_length(file_sizing->sys_file);
-  lock_release(&file_lock);
   return size;
 }
 
@@ -207,7 +194,6 @@ static int read_handler (int fd, void *buffer, unsigned size) {
     exit_handler(-1);
   }
   int num_bytes_read = 0;
-  lock_acquire(&file_lock);
   if (fd == STDIN_FILENO) {
     // Special case reading from STDIN
     char * buffy = (char *) buffer;
@@ -218,7 +204,6 @@ static int read_handler (int fd, void *buffer, unsigned size) {
     }
   } else if (fd == STDOUT_FILENO) {
     // Can not read from STDOUT, so gracefully exit program
-    lock_release(&file_lock);
     exit_handler(-1);
   } else {
     // Should be dealing with a normal file, if so use given functions
@@ -230,7 +215,6 @@ static int read_handler (int fd, void *buffer, unsigned size) {
       num_bytes_read = -1;
     }
   }
-  lock_release(&file_lock);
   return num_bytes_read;
 }
 
@@ -239,9 +223,7 @@ static int write_handler (int fd, const void *buffer, unsigned size) {
     exit_handler(-1);
   }
   int num_bytes_written = 0;
-  lock_acquire(&file_lock);
   if (fd == STDIN_FILENO) {
-    lock_release(&file_lock);
     exit_handler(-1);
   } else if (fd == STDOUT_FILENO) {
     putbuf(buffer, size);
@@ -252,23 +234,18 @@ static int write_handler (int fd, const void *buffer, unsigned size) {
       num_bytes_written = file_write(write_file->sys_file, buffer, size);
     }
   }
-  lock_release(&file_lock);
   return num_bytes_written;
 }
 
 static void seek_handler (int fd, unsigned position) {
-  lock_acquire(&file_lock);
   struct file_struct * file_seeking = get_file(fd);
   file_seek(file_seeking->sys_file, position);
-  lock_release(&file_lock);
 }
 
 static unsigned tell_handler (int fd) {
   unsigned offset = 0;
-  lock_acquire(&file_lock);
   struct file_struct * file_telling = get_file(fd);
   offset = file_tell(file_telling->sys_file);
-  lock_release(&file_lock);
   return offset;
 }
 
