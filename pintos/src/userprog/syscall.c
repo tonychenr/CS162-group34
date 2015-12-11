@@ -35,11 +35,11 @@ static void seek_handler (int fd, unsigned position);
 static unsigned tell_handler (int fd);
 static void close_handler (int fd);
 static int practice_handler (int i);
-static bool chdir_handler (const char *dir);
-static bool mkdir_handler (const char *dir);
-static bool readdir_handler (int fd, const char *dir);
-static bool isdir_handler (int fd);
-static int inumber_handler (int fd);
+// static bool chdir_handler (const char *dir);
+// static bool mkdir_handler (const char *dir);
+// static bool readdir_handler (int fd, const char *dir);
+// static bool isdir_handler (int fd);
+// static int inumber_handler (int fd);
 
 static struct lock ref_count_lock; /* Lock for accessing ref_count in shared data */
 static int number_arguments[21]; /* number_arguments[syscall_number] gives the number of arguments for syscall */
@@ -275,24 +275,24 @@ static int practice_handler (int i) {
   return i + 1;
 }
 
-static bool chdir_handler (const char *dir) {
-  return false;
-}
+// static bool chdir_handler (const char *dir) {
+//   return false;
+// }
 
-static bool mkdir_handler (const char *dir) {
-  return false;
-}
+// static bool mkdir_handler (const char *dir) {
+//   return false;
+// }
 
-static bool readdir_handler (int fd, const char *dir) {
-  return false;
-}
+// static bool readdir_handler (int fd, const char *dir) {
+//   return false;
+// }
 
-static bool isdir_handler (int fd) {
-  return false;
-}
-static int inumber_handler (int fd) {
-  return 0;
-}
+// static bool isdir_handler (int fd) {
+//   return false;
+// }
+// static int inumber_handler (int fd) {
+//   return 0;
+// }
 
 static void
 syscall_handler (struct intr_frame *f UNUSED) 
@@ -363,21 +363,21 @@ syscall_handler (struct intr_frame *f UNUSED)
       case SYS_PRACTICE:
         f->eax = practice_handler ((int) args[1]);
         break;
-      case SYS_CHDIR:
-        f->eax = chdir_handler((char *) args[1]);
-        break;
-      case SYS_MKDIR:
-        f->eax = mkdir_handler((char *) args[1]);
-        break;
-      case SYS_READDIR:
-        f->eax = readdir_handler((int) args[1], (char *) args[2]);
-        break;
-      case SYS_ISDIR:
-        f->eax = isdir_handler((int) args[1]);
-        break;
-      case SYS_INUMBER:
-        f->eax = inumber_handler((int) args[1]);
-        break;
+      // case SYS_CHDIR:
+      //   f->eax = chdir_handler((char *) args[1]);
+      //   break;
+      // case SYS_MKDIR:
+      //   f->eax = mkdir_handler((char *) args[1]);
+      //   break;
+      // case SYS_READDIR:
+      //   f->eax = readdir_handler((int) args[1], (char *) args[2]);
+      //   break;
+      // case SYS_ISDIR:
+      //   f->eax = isdir_handler((int) args[1]);
+      //   break;
+      // case SYS_INUMBER:
+      //   f->eax = inumber_handler((int) args[1]);
+      //   break;
     }
   }
 }

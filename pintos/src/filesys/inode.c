@@ -28,6 +28,8 @@ struct inode_disk
 
 typedef uint32_t block_sector_t;
 
+static struct lock inode_list_lock;
+
 /* Returns the number of sectors to allocate for an inode SIZE
    bytes long. */
 static inline size_t
@@ -164,6 +166,7 @@ void
 inode_init (void) 
 {
   list_init (&open_inodes);
+  lock_init(&inode_list_lock);
 }
 
 /* Initializes an inode with LENGTH bytes of data and
@@ -212,7 +215,7 @@ inode_open (block_sector_t sector)
 {
   struct list_elem *e;
   struct inode *inode;
-
+  lock_acquire(&inode_list_lock);
   /* Check whether this inode is already open. */
   for (e = list_begin (&open_inodes); e != list_end (&open_inodes);
        e = list_next (e)) 
@@ -220,8 +223,9 @@ inode_open (block_sector_t sector)
       inode = list_entry (e, struct inode, elem);
       if (inode->sector == sector) 
         {
-          inode_reopen (inode);
-          return inode; 
+          inode->open_cnt++;
+          lock_release(&inode_list_lock);
+          return inode;
         }
     }
 
@@ -236,7 +240,7 @@ inode_open (block_sector_t sector)
   inode->open_cnt = 1;
   inode->deny_write_cnt = 0;
   inode->removed = false;
-
+  lock_release(&inode_list_lock);
   return inode;
 }
 
@@ -244,8 +248,11 @@ inode_open (block_sector_t sector)
 struct inode *
 inode_reopen (struct inode *inode)
 {
-  if (inode != NULL)
+  if (inode != NULL) {
+    lock_acquire(&inode_list_lock);
     inode->open_cnt++;
+    lock_release(&inode_list_lock);
+  }
   return inode;
 }
 
@@ -286,6 +293,7 @@ inode_close (struct inode *inode)
   if (inode == NULL)
     return;
 
+  lock_acquire(&inode_list_lock);
   /* Release resources if this was the last opener. */
   if (--inode->open_cnt == 0)
     {
@@ -315,6 +323,7 @@ inode_close (struct inode *inode)
 
       free (inode); 
     }
+  lock_release(&inode_list_lock);
 }
 
 /* Marks INODE to be deleted when it is closed by the last caller who
