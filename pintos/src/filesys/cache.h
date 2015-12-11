@@ -19,6 +19,10 @@ struct cache_block
 // Initializes cache including a bitmap that makes finding unused cache entries easy
 void cache_init(void);
 
+void cache_reset(void);
+
+int cache_hits_return(void);
+
 struct cache_block *cache_find_block(block_sector_t sect);
 
 struct cache_block *cache_evict_block(block_sector_t sect);

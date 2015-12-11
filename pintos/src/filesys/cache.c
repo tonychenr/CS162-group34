@@ -19,8 +19,11 @@ static struct lock eviction_lock;
 // Used to implement the clock algorithm
 static struct list_elem *clock_hand;
 
+static int cache_hits;
+
 void cache_init(void) 
 {
+    cache_hits = 0;
     list_init(&buffer_cache_entries);
     lock_init(&eviction_lock);
     // Create 64 entries in the buffer cache
@@ -40,6 +43,25 @@ void cache_init(void)
     clock_hand = list_begin(&buffer_cache_entries);
 }
 
+// For testing purposes (lock not acquired because called inside interrupt handler)
+void cache_reset(void) {
+    struct cache_block *curr_block = NULL;
+    struct list_elem * e;
+    for (e = list_begin(&buffer_cache_entries); e != list_end(&buffer_cache_entries); e = list_next(e)) {
+        curr_block = list_entry(e, struct cache_block, elem);
+        curr_block->dirty = 0;
+        curr_block->valid = 0;
+        curr_block->use = 0;
+        curr_block->accessors = 0;
+        curr_block->evict_penders = 0;
+    }
+    cache_hits = 0;
+}
+
+int cache_hits_return(void) {
+    return cache_hits;
+}
+
 /* 
     If curr_block is in the cache, this function locates and returns the block. Return NULL otherwise
     THIS FUNCTION RETURNS POSSESSING AN ENTRIES LOCK
@@ -52,6 +74,7 @@ struct cache_block *cache_find_block(block_sector_t sect)
         curr_block = list_entry(e, struct cache_block, elem);
         lock_acquire(&curr_block->modify_variables);
         if (curr_block->sect == sect && curr_block->valid) {
+            cache_hit++;
             break;
         }
         lock_release(&curr_block->modify_variables);

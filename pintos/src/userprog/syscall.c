@@ -9,6 +9,7 @@
 #include "threads/synch.h"
 #include "filesys/filesys.h"
 #include "filesys/file.h"
+#include "filesys/cache.h"
 #include "devices/shutdown.h"
 #include "lib/user/syscall.h"
 #include "lib/kernel/console.h"
@@ -258,6 +259,14 @@ static void close_handler (int fd) {
   }
 }
 
+static int hits_handler() {
+  return cache_hits_return();
+}
+
+static void bc_reset_handler() {
+  cache_hits_return(void);
+}
+
 static int practice_handler (int i) {
   return i + 1;
 }
@@ -330,6 +339,12 @@ syscall_handler (struct intr_frame *f UNUSED)
         break;
       case SYS_PRACTICE:
         f->eax = practice_handler ((int) args[1]);
+        break;
+      case SYS_HITS:
+        f->eax = hits_handler();
+        break;
+      case SYS_BCRESET:
+        f->eax = bc_reset_handler();
         break;
     }
   }
