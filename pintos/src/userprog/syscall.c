@@ -17,6 +17,8 @@
 #include "threads/palloc.h"
 #include <list.h>
 #include <debug.h>
+#include "filesys/inode.h"
+#include "filesys/directory.h"
 
 static void syscall_handler (struct intr_frame *);
 static void halt_handler (void);
@@ -33,9 +35,14 @@ static void seek_handler (int fd, unsigned position);
 static unsigned tell_handler (int fd);
 static void close_handler (int fd);
 static int practice_handler (int i);
+static bool chdir_handler (const char *dir);
+static bool mkdir_handler (const char *dir);
+static bool readdir_handler (int fd, const char *dir);
+static bool isdir_handler (int fd);
+static int inumber_handler (int fd);
 
 static struct lock ref_count_lock; /* Lock for accessing ref_count in shared data */
-static int number_arguments[14]; /* number_arguments[syscall_number] gives the number of arguments for syscall */
+static int number_arguments[21]; /* number_arguments[syscall_number] gives the number of arguments for syscall */
 static int global_fd; /* Index of file descriptors */
 
 static struct file_struct *get_file (int fd) {
@@ -77,6 +84,12 @@ syscall_init (void)
   number_arguments[SYS_TELL] = 1;
   number_arguments[SYS_CLOSE] = 1;
   number_arguments[SYS_PRACTICE] = 1;
+
+  number_arguments[SYS_CHDIR] = 1;
+  number_arguments[SYS_MKDIR] = 1;
+  number_arguments[SYS_READDIR] = 2;
+  number_arguments[SYS_ISDIR] = 1;
+  number_arguments[SYS_INUMBER] = 1;
   global_fd = 2;
 }
 
@@ -262,6 +275,25 @@ static int practice_handler (int i) {
   return i + 1;
 }
 
+static bool chdir_handler (const char *dir) {
+  return false;
+}
+
+static bool mkdir_handler (const char *dir) {
+  return false;
+}
+
+static bool readdir_handler (int fd, const char *dir) {
+  return false;
+}
+
+static bool isdir_handler (int fd) {
+  return false;
+}
+static int inumber_handler (int fd) {
+  return 0;
+}
+
 static void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
@@ -330,6 +362,21 @@ syscall_handler (struct intr_frame *f UNUSED)
         break;
       case SYS_PRACTICE:
         f->eax = practice_handler ((int) args[1]);
+        break;
+      case SYS_CHDIR:
+        f->eax = chdir_handler((char *) args[1]);
+        break;
+      case SYS_MKDIR:
+        f->eax = mkdir_handler((char *) args[1]);
+        break;
+      case SYS_READDIR:
+        f->eax = readdir_handler((int) args[1], (char *) args[2]);
+        break;
+      case SYS_ISDIR:
+        f->eax = isdir_handler((int) args[1]);
+        break;
+      case SYS_INUMBER:
+        f->eax = inumber_handler((int) args[1]);
         break;
     }
   }

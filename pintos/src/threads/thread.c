@@ -15,6 +15,7 @@
 #include "userprog/process.h"
 #endif
 #include "threads/malloc.h"
+#include "filesys/directory.h"
 
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
@@ -111,6 +112,7 @@ thread_init (void)
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
+  initial_thread->cwd = dir_open_root();
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -222,11 +224,13 @@ thread_create (const char *name, int priority,
   shared->exec_success = t->tid;
   shared->ref_count = 2;
   shared->child_thread = t;
+  shared->cwd = thread_current()->cwd;
   list_push_back(&thread_current()->child_processes, &shared->elem);
   t->parent_data = shared;
   sema_init(&shared->exec_sema, 0);
   list_init(&t->files);
   t->executable = NULL;
+  t->cwd = shared->cwd;
 
   /* Add to run queue. */
   thread_unblock (t);
