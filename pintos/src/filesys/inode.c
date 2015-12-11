@@ -451,3 +451,17 @@ inode_length (const struct inode *inode)
   cache_shared_post(temp_curr_block, 0);
   return length;
 }
+
+
+/* Returns true of this inode corresponds to a directory */
+bool inode_isdir (const struct inode *inode) {
+  struct cache_block * temp_curr_block = cache_shared_pre(inode->sector);
+  struct inode_disk *disk_inode = (struct inode_disk *) temp_curr_block->data;
+  uint32_t is_dir = disk_inode->is_dir;
+  cache_shared_post(temp_curr_block, 0);
+  if (is_dir) {
+    return true;
+  } else {
+    return false;
+  }
+}

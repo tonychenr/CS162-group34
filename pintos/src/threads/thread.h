@@ -123,6 +123,7 @@ struct p_data {
 
 struct file_struct {
   struct file *sys_file;                /* Actual file struct in filesys/file.c */
+  struct dir *sys_dir;                  /* Actual dir struct in filesys/directory.c */
   int fd;                               /* File descriptor */
   struct list_elem elem;                /* List elem for syscall file list */
 };
