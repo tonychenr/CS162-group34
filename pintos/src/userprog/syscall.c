@@ -49,8 +49,6 @@ static struct file_struct *get_file (int fd) {
     if (nextFile->fd == fd) {
       matchedFile = nextFile;
       break;
-    } else {
-      matchedFile = NULL;
     }
   }
   return matchedFile;
