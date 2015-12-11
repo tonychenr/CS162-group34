@@ -46,9 +46,12 @@ static struct file_struct *get_file (int fd) {
   struct list *file_structs = &thread_current()->files;
   for (e = list_begin (file_structs); e != list_end (file_structs); e = list_next (e)) {
     nextFile = list_entry(e, struct file_struct, elem);
-    if (nextFile->fd == fd)
+    if (nextFile->fd == fd) {
       matchedFile = nextFile;
       break;
+    } else {
+      matchedFile = NULL;
+    }
   }
   return matchedFile;
 }
@@ -166,22 +169,27 @@ static bool remove_handler (const char *file) {
 }
 
 static int open_handler (const char *file) {
+  lock_acquire(&file_lock);
   if (file == NULL) {
+    lock_release(&file_lock);
     return -1;
   }
   struct file *f = filesys_open(file);
   struct thread *t = thread_current();
   if (f == NULL) {
+    lock_release(&file_lock);
     return -1;
   }
   struct file_struct *fstruct = malloc(sizeof(struct file_struct));
   if (fstruct == NULL) {
     file_close(f);
+    lock_release(&file_lock);
     return -1;
   }
   list_push_back(&t->files, &fstruct->elem);
   fstruct->fd = create_fd();
   fstruct->sys_file = f;
+  lock_release(&file_lock);
   return fstruct->fd;
 }
 

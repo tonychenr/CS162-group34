@@ -151,6 +151,7 @@ byte_to_sector (const struct inode *inode, off_t pos)
       }
     }
   }
+  // printf("byte_to_sector: block_sector=%u\n", block_sector);
   return block_sector;
 }
 
@@ -181,7 +182,7 @@ inode_create (block_sector_t sector, off_t length)
   /* If this assertion fails, the inode structure is not exactly
      one sector in size, and you should fix that. */
   ASSERT (sizeof *disk_inode == BLOCK_SECTOR_SIZE);
-
+  // printf("create: inode_sector=%u\n", sector);
   disk_inode = calloc (1, sizeof *disk_inode);
   if (disk_inode != NULL)
     {
@@ -381,7 +382,7 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
 
   if (inode->deny_write_cnt)
     return 0;
-  // printf("write call: size=%u\n", size);
+  // printf("write call: inode_sector=%u, size=%u\n", inode->sector, size);
   while (size > 0) 
     {
       /* Sector to write, starting byte offset within sector. */
