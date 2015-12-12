@@ -1,0 +1,15 @@
+student-test-1 tests our buffer cache's effectiveness by looking at the hit rate after opening, reading and then closing a file and the doing this again. This is the first test mentioned in the testing section of the spec. The test passes if the hit rate after the first read is less than the hit rate after the second read. 
+
+student-test-2 tests our buffer cache's ability to coalesce writes to the same sector, meaning that the cache does not write to disk unnecessarily between writes to the same disk sector. Specifically, the test writes to 128 blocks and then reads the 128 written blocks.  This is the second test mentioned in the testing section of the spec. The test passes if the number of writes is proportional to the number of blocks that are written to.
+
+Both tests work in a similar manner. In order to create these tests, a few syscalls were written that basically return the values of variables such as "hit_rate" and "device_writes" to user programs. A syscall was also written that resets such values and the entire cache's (metadata). These variables were added to our cache.c and are incremented appropriately as the cache is used throughout a user program. The implicit TO-DO list for creating tests was followed closely. A brief overview of how variables are returned to the user program: functions were written in the user syscall.c that cause the handler to use getter function defined in cache.c to return the desired values or cache_reset(), in the case of test-1 hit_rate and cache_reset() and in the case of test-2 device_writes.
+
+output:
+	student-test-1 - PASS
+	student-test-2 - PASS
+
+A bug in the kernel's file syscalls would likely cause both test-1 and test-2 to never run. For example, if open doesn't work and always returns -1 as the file handle, the test would have failure output. 
+
+A bug in the kernel's filesystem that maps files improperly could cause test-1 and test-2 to return hit_rates/device_writes all over the place depending on the size of the file that is mistakenly read.
+
+The experience of writing tests for Pintos was not that hard conceptionally. It was quite a bit of scanning through files and figuring out where to put things, but the to-do list in the specs helped a lot. Now without this to-do list it would have been extremely difficult and taken much more time than 4-6 hours. If I were to change something about the Pintos testing system, it would be the use of Perl to verify the output of tests. There has to be a better way!!! Perl seems unnecessarily complex, or at least the Perl used in the tests we didn't write was difficult to parse. This being said, what was learned from creating tests was some general Perl knowledge and understanding, that one gets from Googling for an hour or so.

@@ -23,6 +23,10 @@ void cache_reset(void);
 
 int cache_hits_return(void);
 
+// int cache_reads_return(void);
+
+// int cache_writes_return(void);
+
 struct cache_block *cache_find_block(block_sector_t sect);
 
 struct cache_block *cache_evict_block(block_sector_t sect);
@@ -30,6 +34,8 @@ struct cache_block *cache_evict_block(block_sector_t sect);
 struct cache_block *cache_shared_pre(block_sector_t sect);
 
 void cache_shared_post(struct cache_block *, uint8_t dirty);
+
+int cache_device_writes(void);
 
 // struct cache_block * cache_write_pre(block_sector_t sect);
 

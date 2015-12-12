@@ -1,5 +1,6 @@
 #include <syscall.h>
 #include "../syscall-nr.h"
+// #include <syscall-nr.h> 
 
 /* Invokes syscall NUMBER, passing no arguments, and returns the
    return value as an `int'. */
@@ -187,4 +188,19 @@ int
 inumber (int fd) 
 {
   return syscall1 (SYS_INUMBER, fd);
+}
+
+void 
+reset_sys (void) 
+{
+  syscall0(SYS_BCRESET);
+}
+
+int hit_rate_sys(void) 
+{
+  return syscall0(SYS_HITS);
+}
+
+int device_writes_sys(void) {
+  return syscall0(SYS_DEV_W);
 }

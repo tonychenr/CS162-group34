@@ -21,9 +21,15 @@ static struct list_elem *clock_hand;
 
 static int cache_hits;
 
+// static int cache_reads;
+// static int cache_writes;
+
+static int device_writes;
+
 void cache_init(void) 
 {
     cache_hits = 0;
+    device_writes = 0;
     list_init(&buffer_cache_entries);
     lock_init(&eviction_lock);
     // Create 64 entries in the buffer cache
@@ -56,10 +62,23 @@ void cache_reset(void) {
         curr_block->evict_penders = 0;
     }
     cache_hits = 0;
+    device_writes = 0;
 }
 
 int cache_hits_return(void) {
     return cache_hits;
+}
+
+// int cache_reads_return(void) {
+//     return cache_reads;
+// }
+
+// int cache_writes_return(void) {
+//     return cache_writes;
+// }
+
+int cache_device_writes(void) {
+    return device_writes;
 }
 
 /* 
@@ -74,7 +93,7 @@ struct cache_block *cache_find_block(block_sector_t sect)
         curr_block = list_entry(e, struct cache_block, elem);
         lock_acquire(&curr_block->modify_variables);
         if (curr_block->sect == sect && curr_block->valid) {
-            cache_hit++;
+            cache_hits++;
             break;
         }
         lock_release(&curr_block->modify_variables);
@@ -112,6 +131,7 @@ struct cache_block * cache_evict_block(block_sector_t sect)
         if (curr_block->dirty && curr_block->valid) {
             curr_block->valid = 0;
             // printf("write_to_disk: sector=%u\n", curr_block->sect);
+            device_writes++;
             block_write(fs_device, curr_block->sect, curr_block->data);
             // cache_to_disk(curr_block); ACQUIRING LOCK NOT NECESSARY
             curr_block->dirty = 0;

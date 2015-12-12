@@ -259,12 +259,16 @@ static void close_handler (int fd) {
   }
 }
 
-static int hits_handler() {
+static int hits_handler(void) {
   return cache_hits_return();
 }
 
-static void bc_reset_handler() {
-  cache_hits_return(void);
+static void bc_reset_handler(void) {
+  cache_hits_return();
+}
+
+static int device_writes(void) {
+  return cache_device_writes();
 }
 
 static int practice_handler (int i) {
@@ -344,7 +348,10 @@ syscall_handler (struct intr_frame *f UNUSED)
         f->eax = hits_handler();
         break;
       case SYS_BCRESET:
-        f->eax = bc_reset_handler();
+        bc_reset_handler();
+        break;
+      case SYS_DEV_W:
+        device_writes();
         break;
     }
   }
