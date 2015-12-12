@@ -102,13 +102,11 @@ filesys_create (const char *name, off_t initial_size, uint32_t is_dir)
   block_sector_t inode_sector = (block_sector_t) -1;
   struct inode *inode = NULL;
   struct dir *search_dir = get_cwd(name);
-  struct dir *parent_dir = NULL;
 
   if (search_dir == NULL) {
     return false;
   }
 
-  parent_dir = dir_reopen(search_dir);
   char part[NAME_MAX + 1] = "";
   int retrieved_next_part;
   for (retrieved_next_part = get_next_part(part, &name); retrieved_next_part > 0;
@@ -117,8 +115,6 @@ filesys_create (const char *name, off_t initial_size, uint32_t is_dir)
       if (!inode_is_dir(inode)) {
         break;
       } else {
-        dir_close(parent_dir);
-        parent_dir = dir_reopen(search_dir);
         dir_close(search_dir);
         search_dir = dir_open(inode);
       }
@@ -127,22 +123,23 @@ filesys_create (const char *name, off_t initial_size, uint32_t is_dir)
       break;
     }
   }
-  if (inode != NULL || parent_dir == NULL || get_next_part(part, &name) != 0) {
+  if (inode != NULL || get_next_part(part, &name) != 0) {
+    if (inode != NULL && !inode_is_dir(inode)) {
+      inode_close(inode);
+    }
     dir_close(search_dir);
-    dir_close(parent_dir);
     return false;
   }
-  dir_close(search_dir);
-  // printf("sector=%u", inode_sector);
-  inode_sector = inode_get_inumber(dir_get_inode(parent_dir));
 
-  bool success = (parent_dir != NULL
+  inode_sector = inode_get_inumber(dir_get_inode(search_dir));
+  
+  bool success = (search_dir != NULL
                   && free_map_allocate (1, &inode_sector)
                   && inode_create (inode_sector, initial_size, is_dir)
-                  && dir_add (parent_dir, part, inode_sector));
+                  && dir_add (search_dir, part, inode_sector));
   if (!success) 
     free_map_release (inode_sector, 1);
-  dir_close (parent_dir);
+  dir_close (search_dir);
 
   return success;
 }
@@ -198,6 +195,7 @@ filesys_open (const char *name)
 bool
 filesys_remove (const char *name) 
 {
+  bool success = false;
   struct inode *inode = NULL;
   struct dir *search_dir = get_cwd(name);
   struct dir *parent_dir = NULL;
@@ -212,11 +210,11 @@ filesys_remove (const char *name)
   for (retrieved_next_part = get_next_part(part, &name); retrieved_next_part > 0;
        retrieved_next_part = get_next_part(part, &name)) {
     if (dir_lookup (search_dir, part, &inode)) {
+      dir_close(parent_dir);
+      parent_dir = dir_reopen(search_dir);
       if (!inode_is_dir(inode)) {
         break;
       } else {
-        dir_close(parent_dir);
-        parent_dir = dir_reopen(search_dir);
         dir_close(search_dir);
         search_dir = dir_open(inode);
       }
@@ -225,29 +223,35 @@ filesys_remove (const char *name)
       break;
     }
   }
-  if (inode != NULL && get_next_part(part, &name) == 0) {
-    inode = inode_reopen(inode);
+
+  if (inode == NULL || get_next_part(part, &name) != 0) {
+    if (inode != NULL && !inode_is_dir(inode)) {
+      inode_close(inode);
+    }
+    dir_close(parent_dir);
+    dir_close(search_dir);
+    return false;
   }
+
+  if (parent_dir == NULL || search_dir == NULL) {
+    dir_close(search_dir);
+    dir_close(search_dir);
+    return false;
+  }
+
+  if (inode_is_dir(inode)) {
+    char buffer[NAME_MAX + 1];
+    if (inode_is_open(inode) || dir_readdir(search_dir, buffer)) {
+      success = false;
+    } else {
+      success = dir_remove (parent_dir, part);
+    }
+  } else {
+    inode_close(inode);
+    success = dir_remove(parent_dir, part);
+  }
+
   dir_close(search_dir);
-  
-  if (parent_dir == NULL) {
-    inode_close(inode);
-    return false;
-  }
-
-  if (inode != NULL && get_next_part(part, &name) != 0) {
-    inode_close(inode);
-    dir_close(parent_dir);
-    return false;
-  }
-  char buffer[NAME_MAX + 1];
-  if (inode_is_open(inode) || dir_readdir(parent_dir, buffer)) {
-    inode_close(inode);
-    dir_close(parent_dir);
-    return false;
-  }
-
-  bool success = dir_remove (parent_dir, part);
   dir_close(parent_dir);
   return success;
 }

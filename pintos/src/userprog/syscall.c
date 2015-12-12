@@ -37,7 +37,7 @@ static unsigned tell_handler (int fd);
 static void close_handler (int fd);
 static int practice_handler (int i);
 // static bool chdir_handler (const char *dir);
-// static bool mkdir_handler (const char *dir);
+static bool mkdir_handler (const char *dir);
 // static bool readdir_handler (int fd, const char *dir);
 // static bool isdir_handler (int fd);
 // static int inumber_handler (int fd);
@@ -305,9 +305,12 @@ static int practice_handler (int i) {
 //   return false;
 // }
 
-// static bool mkdir_handler (const char *dir) {
-//   return false;
-// }
+static bool mkdir_handler (const char *dir) {
+  if (dir == NULL) {
+    exit_handler(-1);
+  }
+  return filesys_create(dir, 0, 1);
+}
 
 // static bool readdir_handler (int fd, const char *dir) {
 //   return false;
@@ -392,9 +395,9 @@ syscall_handler (struct intr_frame *f UNUSED)
       // case SYS_CHDIR:
       //   f->eax = chdir_handler((char *) args[1]);
       //   break;
-      // case SYS_MKDIR:
-      //   f->eax = mkdir_handler((char *) args[1]);
-      //   break;
+      case SYS_MKDIR:
+        f->eax = mkdir_handler((char *) args[1]);
+        break;
       // case SYS_READDIR:
       //   f->eax = readdir_handler((int) args[1], (char *) args[2]);
       //   break;
