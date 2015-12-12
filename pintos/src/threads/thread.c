@@ -224,6 +224,7 @@ thread_create (const char *name, int priority,
   shared->exec_success = t->tid;
   shared->ref_count = 2;
   shared->child_thread = t;
+  shared->cwd = NULL;
   list_push_back(&thread_current()->child_processes, &shared->elem);
   t->parent_data = shared;
   sema_init(&shared->exec_sema, 0);
@@ -503,6 +504,7 @@ init_thread (struct thread *t, const char *name, int priority)
 
   list_init(&t->child_processes);
   t->parent_data = NULL;
+  t->global_fd = 2;
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and

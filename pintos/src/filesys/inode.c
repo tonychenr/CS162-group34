@@ -233,8 +233,10 @@ inode_open (block_sector_t sector)
 
   /* Allocate memory. */
   inode = malloc (sizeof *inode);
-  if (inode == NULL)
+  if (inode == NULL) {
+    lock_release(&inode_list_lock);
     return NULL;
+  }
 
   /* Initialize. */
   list_push_front (&open_inodes, &inode->elem);
@@ -394,8 +396,9 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
   off_t bytes_written = 0;
   char *bounce = NULL;
 
-  if (inode->deny_write_cnt)
-    return 0;
+  if (inode->deny_write_cnt) {
+    return 0;    
+  }
   // printf("write call: inode_sector=%u, size=%u\n", inode->sector, size);
   while (size > 0) 
     {
@@ -474,7 +477,10 @@ inode_length (const struct inode *inode)
 
 
 /* Returns true of this inode corresponds to a directory */
-bool inode_isdir (const struct inode *inode) {
+bool inode_is_dir (const struct inode *inode) {
+  if (inode == NULL) {
+    return false;
+  }
   struct cache_block * temp_curr_block = cache_shared_pre(inode->sector);
   struct inode_disk *disk_inode = (struct inode_disk *) temp_curr_block->data;
   uint32_t is_dir = disk_inode->is_dir;
@@ -484,4 +490,11 @@ bool inode_isdir (const struct inode *inode) {
   } else {
     return false;
   }
+}
+
+bool inode_is_open (struct inode *inode) {
+  lock_acquire(&inode_list_lock);
+  bool open = inode->open_cnt > 1;
+  lock_release(&inode_list_lock);
+  return open;
 }

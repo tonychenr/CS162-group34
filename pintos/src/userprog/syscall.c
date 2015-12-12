@@ -19,6 +19,7 @@
 #include <debug.h>
 #include "filesys/inode.h"
 #include "filesys/directory.h"
+#include <string.h>
 
 static void syscall_handler (struct intr_frame *);
 static void halt_handler (void);
@@ -61,8 +62,7 @@ static struct file_struct *get_file (int fd) {
 }
 
 static int create_fd (void) {
-  global_fd++;
-  return global_fd;
+  return thread_current()->global_fd++;
 }
 
 void
@@ -112,6 +112,11 @@ void exit_handler (int status) {
       thread_current()->parent_data = NULL;
       free(parent);
 
+    }
+    if (parent->cwd != NULL) {
+      dir_close(parent->cwd);
+    } else if (thread_current()->cwd != NULL) {
+      dir_close(thread_current()->cwd);
     }
   }
 
@@ -164,8 +169,7 @@ static bool create_handler (const char *file, unsigned initial_size) {
   if (file == NULL) {
     exit_handler(-1);
   }
-  bool created = filesys_create(file, initial_size); 
-  return created;
+  return filesys_create(file, initial_size, 0); 
 }
 
 static bool remove_handler (const char *file) {
@@ -177,19 +181,40 @@ static int open_handler (const char *file) {
   if (file == NULL) {
     return -1;
   }
-  struct file *f = filesys_open(file);
-  struct thread *t = thread_current();
-  if (f == NULL) {
+
+  struct inode *inode = filesys_open(file);
+  if (inode == NULL) {
     return -1;
   }
+
+  struct dir *sys_dir = NULL;
+  struct file *sys_file = NULL;
+  if (inode_is_dir(inode)) {
+    sys_dir = dir_open(inode);
+    if (sys_dir == NULL) {
+      return -1;
+    }
+  } else {
+    sys_file = file_open(inode);
+    if (sys_file == NULL) {
+      return -1;
+    }
+  }
+
   struct file_struct *fstruct = malloc(sizeof(struct file_struct));
   if (fstruct == NULL) {
-    file_close(f);
+    if (sys_file != NULL) {
+      file_close(sys_file);
+    } else {
+      dir_close(sys_dir);
+    }
     return -1;
   }
-  list_push_back(&t->files, &fstruct->elem);
+
+  list_push_back(&thread_current()->files, &fstruct->elem);
   fstruct->fd = create_fd();
-  fstruct->sys_file = f;
+  fstruct->sys_file = sys_file;
+  fstruct->sys_dir = sys_dir;
   return fstruct->fd;
 }
 
@@ -213,7 +238,7 @@ static int read_handler (int fd, void *buffer, unsigned size) {
     while (num_bytes_read < (int) size) {
       char chary = input_getc();
       buffy[num_bytes_read] = chary;
-      num_bytes_read = num_bytes_read + 1;
+      num_bytes_read++;
     }
   } else if (fd == STDOUT_FILENO) {
     // Can not read from STDOUT, so gracefully exit program
@@ -221,7 +246,7 @@ static int read_handler (int fd, void *buffer, unsigned size) {
   } else {
     // Should be dealing with a normal file, if so use given functions
     struct file_struct * file_reading = get_file(fd);
-    if (file_reading != NULL) {
+    if (file_reading != NULL && file_reading->sys_file != NULL) {
       num_bytes_read = file_read(file_reading->sys_file, buffer, size);
     } else {
       // Was not able to read from file so return -1 
@@ -243,7 +268,7 @@ static int write_handler (int fd, const void *buffer, unsigned size) {
     num_bytes_written = size;
   } else {
     struct file_struct *write_file = get_file(fd);
-    if (write_file != NULL) {
+    if (write_file != NULL && write_file->sys_file != NULL) {
       num_bytes_written = file_write(write_file->sys_file, buffer, size);
     }
   }
@@ -267,6 +292,7 @@ static void close_handler (int fd) {
   if (f != NULL) {
     list_remove(&f->elem);
     file_close(f->sys_file);
+    dir_close(f->sys_dir);
     free(f);
   }
 }

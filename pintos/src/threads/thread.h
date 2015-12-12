@@ -107,6 +107,7 @@ struct thread
     struct list files;                  /* List of files opened by this process */
     struct file_struct *executable;     /* File struct containing executable file of self */
     struct dir *cwd;                    /* Current working directory of this thread */
+    uint32_t global_fd;                 /* Counter for this thread's file descriptors */
   };
 
 struct p_data {
@@ -118,6 +119,7 @@ struct p_data {
   struct semaphore sema;                /*Initialized to 0. Downed when parent process waits on child*/
   int ref_count;                        /*Number of processes using this p_data. Can be 0,1, or 2*/
   struct semaphore exec_sema;           /* Initialized to 0. Used to synchronize exec */
+  struct dir *cwd;                      /* Current working directory of parent thread */
 };
 
 struct file_struct {

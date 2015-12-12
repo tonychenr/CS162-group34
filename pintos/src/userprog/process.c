@@ -58,9 +58,10 @@ process_execute (const char *file_name)
     return tid;
   }
 
+  struct thread *t = thread_current();
   struct p_data *parent_data = NULL;
   struct list_elem* e;
-  struct list *childs = &thread_current()->child_processes;
+  struct list *childs = &t->child_processes;
   for (e = list_begin(childs); e != list_end(childs); e = list_next(e)) {
     struct p_data* child = list_entry(e, struct p_data, elem);
     if (child->child_pid == tid) {
@@ -69,6 +70,7 @@ process_execute (const char *file_name)
     }
   }
   if (parent_data != NULL) {
+    parent_data->cwd = t->cwd == NULL ? dir_open_root() : dir_reopen(t->cwd);
     sema_down(&parent_data->exec_sema);
     free (fn_copy2);
     return parent_data->exec_success;
@@ -128,7 +130,7 @@ start_process (void *file_name_)
     thread_exit();
   }
 
-  struct file *executable_file = filesys_open(passedArguments[0]);
+  struct file *executable_file = file_open(filesys_open(passedArguments[0]));
   if (executable_file == NULL) {
     parent_data->exec_success = -1;
     sema_up(&parent_data->exec_sema);
@@ -352,7 +354,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   process_activate ();
 
   /* Open executable file. */
-  file = filesys_open (file_name);
+  file = file_open(filesys_open (file_name));
   if (file == NULL) 
     {
       printf ("load: %s: open failed\n", file_name);
