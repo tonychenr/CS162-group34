@@ -250,7 +250,7 @@ filesys_remove (const char *name)
 
   if (parent_dir == NULL || search_dir == NULL) {
     dir_close(search_dir);
-    dir_close(search_dir);
+    dir_close(parent_dir);
     return false;
   }
 
@@ -259,6 +259,7 @@ filesys_remove (const char *name)
     if (inode_is_open(inode) || dir_readdir(search_dir, buffer)) {
       success = false;
     } else {
+      inode_close(inode);
       success = dir_remove (parent_dir, part);
     }
   } else {

@@ -43,8 +43,7 @@ static bool isdir_handler (int fd);
 static int inumber_handler (int fd);
 
 static struct lock ref_count_lock; /* Lock for accessing ref_count in shared data */
-static struct lock file_lock; /* Testing synchronization for autograder syn-rw */
-static int number_arguments[21]; /* number_arguments[syscall_number] gives the number of arguments for syscall */
+static int number_arguments[SYS_INUMBER + 1]; /* number_arguments[syscall_number] gives the number of arguments for syscall */
 
 static struct file_struct *get_file (int fd) {
   struct list_elem *e;
@@ -70,7 +69,6 @@ syscall_init (void)
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
   lock_init(&ref_count_lock);
-  lock_init(&file_lock);
   number_arguments[SYS_HALT] = 0;
   number_arguments[SYS_EXIT] = 1;
   number_arguments[SYS_EXEC] = 1;
@@ -170,11 +168,15 @@ static bool create_handler (const char *file, unsigned initial_size) {
   if (file == NULL) {
     exit_handler(-1);
   }
-  return filesys_create(file, initial_size, 0); 
+  char file_copy[strlen(file) + 1];
+  strlcpy(file_copy, file, strlen(file) + 1);
+  return filesys_create(file_copy, initial_size, 0); 
 }
 
 static bool remove_handler (const char *file) {
-  bool destroyed = filesys_remove(file);
+  char file_copy[strlen(file) + 1];
+  strlcpy(file_copy, file, strlen(file) + 1);
+  bool destroyed = filesys_remove(file_copy);
   return destroyed;
 }
 
@@ -183,7 +185,10 @@ static int open_handler (const char *file) {
     return -1;
   }
 
-  struct inode *inode = filesys_open(file);
+  char file_copy[strlen(file) + 1];
+  strlcpy(file_copy, file, strlen(file) + 1);
+
+  struct inode *inode = filesys_open(file_copy);
   if (inode == NULL) {
     return -1;
   }
@@ -246,7 +251,6 @@ static int read_handler (int fd, void *buffer, unsigned size) {
     // Can not read from STDOUT, so gracefully exit program
     exit_handler(-1);
   } else {
-    lock_acquire(&file_lock);
     // Should be dealing with a normal file, if so use given functions
     struct file_struct * file_reading = get_file(fd);
     if (file_reading != NULL && file_reading->sys_file != NULL) {
@@ -255,7 +259,6 @@ static int read_handler (int fd, void *buffer, unsigned size) {
       // Was not able to read from file so return -1 
       num_bytes_read = -1;
     }
-    lock_release(&file_lock);
   }
   
   return num_bytes_read;
@@ -272,17 +275,14 @@ static int write_handler (int fd, const void *buffer, unsigned size) {
     putbuf(buffer, size);
     num_bytes_written = size;
   } else {
-    lock_acquire(&file_lock);
     struct file_struct *write_file = get_file(fd);
     if (write_file != NULL && write_file->sys_file != NULL) {
       num_bytes_written = file_write(write_file->sys_file, buffer, size);
     } else {
-      lock_release(&file_lock);
       return -1;
     }
-    lock_release(&file_lock);
   }
-  
+
   return num_bytes_written;
 }
 
@@ -317,7 +317,10 @@ static bool chdir_handler (const char *dir) {
     return false;
   }
 
-  struct dir *new_dir = dir_open(filesys_open(dir));
+  char dir_copy[strlen(dir) + 1];
+  strlcpy(dir_copy, dir, strlen(dir) + 1);
+
+  struct dir *new_dir = dir_open(filesys_open(dir_copy));
   if (new_dir == NULL) {
     return false;
   }
@@ -337,7 +340,9 @@ static bool mkdir_handler (const char *dir) {
   if (dir == NULL) {
     exit_handler(-1);
   }
-  return filesys_create(dir, 0, 1);
+  char dir_copy[strlen(dir) + 1];
+  strlcpy(dir_copy, dir, strlen(dir) + 1);
+  return filesys_create(dir_copy, 0, 1);
 }
 
 static bool readdir_handler (int fd, char *dir) {
