@@ -34,7 +34,7 @@ process_execute (const char *file_name)
 {
   tid_t tid;
   char *fn_copy;
-  char *fn_copy2;
+  char fn_copy2[strlen(file_name) + 1];
   char *saveptr;
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
@@ -44,9 +44,6 @@ process_execute (const char *file_name)
   strlcpy (fn_copy, file_name, PGSIZE);
 
   // Changed the file name to be just the first argument
-  fn_copy2 = malloc(strlen(file_name) + 1);
-  if (fn_copy2 == NULL)
-    return TID_ERROR;
   strlcpy (fn_copy2, file_name, strlen(file_name) + 1);
   file_name = strtok_r(fn_copy2, " ", &saveptr);
 
@@ -54,7 +51,6 @@ process_execute (const char *file_name)
   tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR) {
     palloc_free_page (fn_copy);
-    free (fn_copy2);
     return tid;
   }
 
@@ -72,14 +68,10 @@ process_execute (const char *file_name)
   if (parent_data != NULL) {
     parent_data->cwd = t->cwd == NULL ? dir_open_root() : dir_reopen(t->cwd);
     sema_down(&parent_data->exec_sema);
-    free (fn_copy2);
     return parent_data->exec_success;
   } else {
-    free (fn_copy2);
     return -1;
   }
-
-  
 }
 
 /* A thread function that loads a user process and starts it
@@ -91,7 +83,7 @@ start_process (void *file_name_)
   struct intr_frame if_;
   bool success;
 
-  char *file_name_copy = malloc(strlen(file_name) + 1);
+  char file_name_copy[strlen(file_name) + 1];
   strlcpy(file_name_copy, file_name, strlen(file_name) + 1);
   char * token, *saveptr1;
   char *passedArguments[128];
@@ -109,7 +101,6 @@ start_process (void *file_name_)
   if (arg_string_size > 4000) {
     // Too many arguments . . . handle accordingly
     palloc_free_page (file_name);
-    free(file_name_copy);
     parent_data->exec_success = -1;
     sema_up(&parent_data->exec_sema);
     exit_handler(-1);
@@ -126,7 +117,6 @@ start_process (void *file_name_)
   if (!success) {
     parent_data->exec_success = -1;
     sema_up(&parent_data->exec_sema);
-    free(file_name_copy);
     thread_exit();
   }
 
@@ -134,17 +124,16 @@ start_process (void *file_name_)
   if (executable_file == NULL) {
     parent_data->exec_success = -1;
     sema_up(&parent_data->exec_sema);
-    free(file_name_copy);
     thread_exit();
   }
   struct file_struct *executable = malloc(sizeof(struct file_struct));
   if (executable == NULL) {
     parent_data->exec_success = -1;
     sema_up(&parent_data->exec_sema);
-    free(file_name_copy);
     file_close(executable_file);
     thread_exit();
   }
+  executable->sys_dir = NULL;
   executable->sys_file = executable_file;
   file_deny_write(executable_file);
   t->executable = executable;
@@ -179,7 +168,6 @@ start_process (void *file_name_)
   if_.esp -= 4;
   *(int *) if_.esp = 0;
 
-  free(file_name_copy);
   sema_up(&parent_data->exec_sema);
 
   /* Start the user process by simulating a return from an

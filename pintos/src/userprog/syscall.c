@@ -36,11 +36,11 @@ static void seek_handler (int fd, unsigned position);
 static unsigned tell_handler (int fd);
 static void close_handler (int fd);
 static int practice_handler (int i);
-// static bool chdir_handler (const char *dir);
+static bool chdir_handler (const char *dir);
 static bool mkdir_handler (const char *dir);
-// static bool readdir_handler (int fd, const char *dir);
-// static bool isdir_handler (int fd);
-// static int inumber_handler (int fd);
+static bool readdir_handler (int fd, char *dir);
+static bool isdir_handler (int fd);
+static int inumber_handler (int fd);
 
 static struct lock ref_count_lock; /* Lock for accessing ref_count in shared data */
 static int number_arguments[21]; /* number_arguments[syscall_number] gives the number of arguments for syscall */
@@ -142,6 +142,7 @@ void exit_handler (int status) {
   }
   struct file_struct *executable = thread_current()->executable;
   if (executable != NULL) {
+    file_allow_write(executable->sys_file);
     file_close(executable->sys_file);
     thread_current()->executable = NULL;
     free(executable);
@@ -270,6 +271,8 @@ static int write_handler (int fd, const void *buffer, unsigned size) {
     struct file_struct *write_file = get_file(fd);
     if (write_file != NULL && write_file->sys_file != NULL) {
       num_bytes_written = file_write(write_file->sys_file, buffer, size);
+    } else {
+      return -1;
     }
   }
   return num_bytes_written;
@@ -301,9 +304,26 @@ static int practice_handler (int i) {
   return i + 1;
 }
 
-// static bool chdir_handler (const char *dir) {
-//   return false;
-// }
+static bool chdir_handler (const char *dir) {
+  if (dir == NULL) {
+    return false;
+  }
+
+  struct dir *new_dir = dir_open(filesys_open(dir));
+  if (new_dir == NULL) {
+    return false;
+  }
+
+  struct thread *t = thread_current();
+  if (t->parent_data != NULL && t->parent_data->cwd != NULL) {
+    dir_close(t->parent_data->cwd);
+    t->parent_data->cwd = NULL;
+  } else if (t->cwd != NULL) {
+    dir_close(t->cwd);
+  }
+  t->cwd = new_dir;
+  return true;
+}
 
 static bool mkdir_handler (const char *dir) {
   if (dir == NULL) {
@@ -312,16 +332,28 @@ static bool mkdir_handler (const char *dir) {
   return filesys_create(dir, 0, 1);
 }
 
-// static bool readdir_handler (int fd, const char *dir) {
-//   return false;
-// }
+static bool readdir_handler (int fd, char *dir) {
+  struct file_struct * f = get_file(fd);
+  if (f->sys_dir != NULL) {
+    return dir_readdir(f->sys_dir, dir);
+  }
 
-// static bool isdir_handler (int fd) {
-//   return false;
-// }
-// static int inumber_handler (int fd) {
-//   return 0;
-// }
+  return false;
+}
+
+static bool isdir_handler (int fd) {
+  struct file_struct * f = get_file(fd);
+  return f->sys_dir != NULL;
+}
+
+static int inumber_handler (int fd) {
+  struct file_struct * f = get_file(fd);
+  if (f->sys_dir != NULL) {
+    return inode_get_inumber(dir_get_inode(f->sys_dir));
+  } else {
+    return inode_get_inumber(file_get_inode(f->sys_file));
+  }
+}
 
 static void
 syscall_handler (struct intr_frame *f UNUSED) 
@@ -392,21 +424,21 @@ syscall_handler (struct intr_frame *f UNUSED)
       case SYS_PRACTICE:
         f->eax = practice_handler ((int) args[1]);
         break;
-      // case SYS_CHDIR:
-      //   f->eax = chdir_handler((char *) args[1]);
-      //   break;
+      case SYS_CHDIR:
+        f->eax = chdir_handler((char *) args[1]);
+        break;
       case SYS_MKDIR:
         f->eax = mkdir_handler((char *) args[1]);
         break;
-      // case SYS_READDIR:
-      //   f->eax = readdir_handler((int) args[1], (char *) args[2]);
-      //   break;
-      // case SYS_ISDIR:
-      //   f->eax = isdir_handler((int) args[1]);
-      //   break;
-      // case SYS_INUMBER:
-      //   f->eax = inumber_handler((int) args[1]);
-      //   break;
+      case SYS_READDIR:
+        f->eax = readdir_handler((int) args[1], (char *) args[2]);
+        break;
+      case SYS_ISDIR:
+        f->eax = isdir_handler((int) args[1]);
+        break;
+      case SYS_INUMBER:
+        f->eax = inumber_handler((int) args[1]);
+        break;
     }
   }
 }
