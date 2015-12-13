@@ -43,8 +43,8 @@ static bool isdir_handler (int fd);
 static int inumber_handler (int fd);
 
 static struct lock ref_count_lock; /* Lock for accessing ref_count in shared data */
+static struct lock file_lock; /* Testing synchronization for autograder syn-rw */
 static int number_arguments[21]; /* number_arguments[syscall_number] gives the number of arguments for syscall */
-static int global_fd; /* Index of file descriptors */
 
 static struct file_struct *get_file (int fd) {
   struct list_elem *e;
@@ -70,6 +70,7 @@ syscall_init (void)
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
   lock_init(&ref_count_lock);
+  lock_init(&file_lock);
   number_arguments[SYS_HALT] = 0;
   number_arguments[SYS_EXIT] = 1;
   number_arguments[SYS_EXEC] = 1;
@@ -90,7 +91,6 @@ syscall_init (void)
   number_arguments[SYS_READDIR] = 2;
   number_arguments[SYS_ISDIR] = 1;
   number_arguments[SYS_INUMBER] = 1;
-  global_fd = 2;
 }
 
 static void halt_handler (void) {
@@ -232,6 +232,7 @@ static int read_handler (int fd, void *buffer, unsigned size) {
   if (!is_user_vaddr(buffer + size) || pagedir_get_page(thread_current()->pagedir, buffer) == NULL) {
     exit_handler(-1);
   }
+
   int num_bytes_read = 0;
   if (fd == STDIN_FILENO) {
     // Special case reading from STDIN
@@ -245,6 +246,7 @@ static int read_handler (int fd, void *buffer, unsigned size) {
     // Can not read from STDOUT, so gracefully exit program
     exit_handler(-1);
   } else {
+    lock_acquire(&file_lock);
     // Should be dealing with a normal file, if so use given functions
     struct file_struct * file_reading = get_file(fd);
     if (file_reading != NULL && file_reading->sys_file != NULL) {
@@ -253,7 +255,9 @@ static int read_handler (int fd, void *buffer, unsigned size) {
       // Was not able to read from file so return -1 
       num_bytes_read = -1;
     }
+    lock_release(&file_lock);
   }
+  
   return num_bytes_read;
 }
 
@@ -268,13 +272,17 @@ static int write_handler (int fd, const void *buffer, unsigned size) {
     putbuf(buffer, size);
     num_bytes_written = size;
   } else {
+    lock_acquire(&file_lock);
     struct file_struct *write_file = get_file(fd);
     if (write_file != NULL && write_file->sys_file != NULL) {
       num_bytes_written = file_write(write_file->sys_file, buffer, size);
     } else {
+      lock_release(&file_lock);
       return -1;
     }
+    lock_release(&file_lock);
   }
+  
   return num_bytes_written;
 }
 
