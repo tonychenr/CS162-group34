@@ -77,6 +77,7 @@ static block_sector_t allocate_block_direct (struct inode_disk *disk_inode, size
   if (block_sector == UNALLOCATED_SECTOR) {
     block_sector =  allocate_block();
     set_direct_block(block_sector);
+    cache_invalidate_block(block_sector);
     disk_inode->direct[sectors] = block_sector;
   }
   return block_sector;
@@ -93,6 +94,7 @@ static block_sector_t handle_indirect (struct cache_block *temp_curr_block, size
         set_indirect_block(block_sector);
       else
         set_direct_block(block_sector);
+      cache_invalidate_block(block_sector);
       indirect_block[index] = block_sector;
   }
 
@@ -121,6 +123,7 @@ byte_to_sector (const struct inode *inode, off_t pos)
       if (indirect == UNALLOCATED_SECTOR) {
         indirect = allocate_block();
         set_indirect_block(indirect);
+        cache_invalidate_block(indirect);
         disk_inode->indirect[0] = indirect;
       }
       cache_shared_post(temp_curr_block, 1);
@@ -138,6 +141,7 @@ byte_to_sector (const struct inode *inode, off_t pos)
       if (doubly_indirect == UNALLOCATED_SECTOR) {
         doubly_indirect = allocate_block();
         set_indirect_block(doubly_indirect);
+        cache_invalidate_block(doubly_indirect);
         disk_inode->indirect[1] = doubly_indirect;
       }
       cache_shared_post(temp_curr_block, 1);
@@ -352,14 +356,11 @@ inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset)
 {
   uint8_t *buffer = buffer_;
   off_t bytes_read = 0;
-  char *bounce = NULL;
+  uint8_t *bounce = NULL;
 
   while (size > 0) 
     {
       /* Disk sector to read, starting byte offset within sector. */
-      block_sector_t sector_idx = byte_to_sector (inode, offset);
-      if (sector_idx == UNALLOCATED_SECTOR)
-        break;
       int sector_ofs = offset % BLOCK_SECTOR_SIZE;
 
       /* Bytes left in inode, bytes left in sector, lesser of the two. */
@@ -371,6 +372,11 @@ inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset)
       int chunk_size = size < min_left ? size : min_left;
       if (chunk_size <= 0)
         break;
+
+      block_sector_t sector_idx = byte_to_sector (inode, offset);
+      if (sector_idx == UNALLOCATED_SECTOR)
+        break;
+      
       struct cache_block * temp_curr_block;
       temp_curr_block = cache_shared_pre(sector_idx);
       bounce = temp_curr_block->data;
@@ -397,7 +403,7 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
 {
   const uint8_t *buffer = buffer_;
   off_t bytes_written = 0;
-  char *bounce = NULL;
+  uint8_t *bounce = NULL;
 
   if (inode->deny_write_cnt) {
     return 0;    
@@ -406,9 +412,6 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
   while (size > 0) 
     {
       /* Sector to write, starting byte offset within sector. */
-      block_sector_t sector_idx = byte_to_sector (inode, offset);
-      if (sector_idx == UNALLOCATED_SECTOR)
-        break;
       int sector_ofs = offset % BLOCK_SECTOR_SIZE;
 
       /* Bytes left in inode, bytes left in sector, lesser of the two. */
@@ -421,7 +424,11 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
       int chunk_size = size < min_left ? size : min_left;
       if (chunk_size <= 0)
         break;
-      
+
+      block_sector_t sector_idx = byte_to_sector (inode, offset);
+      if (sector_idx == UNALLOCATED_SECTOR)
+        break;
+
       struct cache_block * temp_curr_block;
       temp_curr_block = cache_shared_pre(sector_idx);
       bounce = temp_curr_block->data;

@@ -105,19 +105,19 @@ void exit_handler (int status) {
     parent->exit_status = status;
     parent->child_thread = NULL;
     sema_up(&parent->sema);
-    parent->ref_count --;
+    parent->ref_count--;
+    if (parent->cwd != NULL) {
+      dir_close(parent->cwd);
+    }
     if (parent->ref_count == 0) {
       thread_current()->parent_data = NULL;
       free(parent);
 
     }
-    if (parent->cwd != NULL) {
-      dir_close(parent->cwd);
-    } else if (thread_current()->cwd != NULL) {
-      dir_close(thread_current()->cwd);
-    }
   }
-
+  if (thread_current()->cwd != NULL) {
+    dir_close(thread_current()->cwd);
+  }
   /* iterate through children and remove this as their parent*/
   struct list_elem* e;
   struct list *childs = &thread_current()->child_processes;
@@ -347,25 +347,32 @@ static bool mkdir_handler (const char *dir) {
 
 static bool readdir_handler (int fd, char *dir) {
   struct file_struct * f = get_file(fd);
-  if (f->sys_dir != NULL) {
-    return dir_readdir(f->sys_dir, dir);
+  if (f != NULL) {
+    if (f->sys_dir != NULL) {
+      return dir_readdir(f->sys_dir, dir);
+    }
   }
-
   return false;
 }
 
 static bool isdir_handler (int fd) {
   struct file_struct * f = get_file(fd);
-  return f->sys_dir != NULL;
+  if (f != NULL) {
+    return f->sys_dir != NULL;    
+  }
+  return false;
 }
 
 static int inumber_handler (int fd) {
   struct file_struct * f = get_file(fd);
-  if (f->sys_dir != NULL) {
-    return inode_get_inumber(dir_get_inode(f->sys_dir));
-  } else {
-    return inode_get_inumber(file_get_inode(f->sys_file));
+  if (f != NULL) {
+    if (f->sys_dir != NULL) {
+      return inode_get_inumber(dir_get_inode(f->sys_dir));
+    } else {
+      return inode_get_inumber(file_get_inode(f->sys_file));
+    }
   }
+  return -1;
 }
 
 static void

@@ -11,23 +11,23 @@
 
 
 // The "buffer cache" object (list of cache blocks)
-static struct list buffer_cache_entries;
+static struct cache_block cache[64];
 
 // This lock needs to be acquired in order to evict from the cache
 static struct lock eviction_lock;
 
 // Used to implement the clock algorithm
-static struct list_elem *clock_hand;
+static uint32_t clock_hand;
 
 void cache_init(void) 
 {
-    list_init(&buffer_cache_entries);
     lock_init(&eviction_lock);
     // Create 64 entries in the buffer cache
     int i;
-    for (i = 1; i <= 64; i++) 
+    for (i = 0; i < 64; i++) 
     {
-        struct cache_block * curr_block = malloc(sizeof(struct cache_block) + BLOCK_SECTOR_SIZE);
+        struct cache_block *curr_block = &cache[i];
+        memset(curr_block->data, 0, BLOCK_SECTOR_SIZE);
         curr_block->dirty = 0;
         curr_block->valid = 0;
         curr_block->accessors = 0;
@@ -35,9 +35,8 @@ void cache_init(void)
         lock_init(&curr_block->modify_variables);
         cond_init(&curr_block->need_to_evict);
         curr_block->use = 0;
-        list_push_back(&buffer_cache_entries, &curr_block->elem);
     }
-    clock_hand = list_begin(&buffer_cache_entries);
+    clock_hand = 0;
 }
 
 /* 
@@ -47,9 +46,9 @@ void cache_init(void)
 struct cache_block *cache_find_block(block_sector_t sect)
 {
     struct cache_block * curr_block = NULL;
-    struct list_elem* e;
-    for (e = list_begin (&buffer_cache_entries); e != list_end (&buffer_cache_entries); e = list_next (e)) {
-        curr_block = list_entry(e, struct cache_block, elem);
+    int i;
+    for (i = 0; i < 64; i++) {
+        curr_block = &cache[i];
         lock_acquire(&curr_block->modify_variables);
         if (curr_block->sect == sect && curr_block->valid) {
             break;
@@ -66,17 +65,17 @@ struct cache_block * cache_evict_block(block_sector_t sect)
     struct cache_block * curr_block = cache_find_block(sect);
     if (curr_block == NULL) {
         while (true) {
-            if (clock_hand == list_end(&buffer_cache_entries)) {
-                clock_hand = list_begin(&buffer_cache_entries);
+            if (clock_hand == 64) {
+                clock_hand = 0;
             }
-            curr_block = list_entry(clock_hand, struct cache_block, elem);
+            curr_block = &cache[clock_hand];
             lock_acquire(&curr_block->modify_variables);
             if (curr_block->use && curr_block->valid) {
                 curr_block->use = 0;
                 lock_release(&curr_block->modify_variables);
-                clock_hand = list_next(clock_hand);
+                clock_hand++;
             } else {
-                clock_hand = list_next(clock_hand);
+                clock_hand++;
                 break;
             }
         }
@@ -132,10 +131,10 @@ void cache_shared_post(struct cache_block * curr_block, uint8_t dirty) {
 /* Iterates through all cache entries, checks if an entry is valid and dirty,
 and writes the state to disk. */
 void cache_write_back_on_shutdown(void) {
-    struct list_elem* e;
+    int i;
     struct cache_block * curr_block;
-    for (e = list_begin (&buffer_cache_entries); e != list_end (&buffer_cache_entries); e = list_next (e)) {
-        curr_block = list_entry(e, struct cache_block, elem);
+    for (i = 0; i < 64; i++) {
+        curr_block = &cache[i];
         lock_acquire(&curr_block->modify_variables);
         curr_block->evict_penders++;
         while (curr_block->accessors > 0) {
