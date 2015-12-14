@@ -15,6 +15,8 @@
 #define INDIRECT_BLOCK_POINTER_COUNT 128
 #define UNALLOCATED_SECTOR (block_sector_t) -1
 
+// static int device_writes;
+
 /* On-disk inode.
    Must be exactly BLOCK_SECTOR_SIZE bytes long. */
 struct inode_disk

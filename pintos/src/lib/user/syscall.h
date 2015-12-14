@@ -38,6 +38,9 @@ int practice (int i);
 /* Project 3 and optionally project 4. */
 mapid_t mmap (int fd, void *addr);
 void munmap (mapid_t);
+int hit_rate_sys(void);
+void reset_sys (void);
+int device_writes_sys(void);
 
 /* Project 4 only. */
 bool chdir (const char *dir);

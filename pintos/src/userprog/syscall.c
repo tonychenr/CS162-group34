@@ -9,6 +9,7 @@
 #include "threads/synch.h"
 #include "filesys/filesys.h"
 #include "filesys/file.h"
+#include "filesys/cache.h"
 #include "devices/shutdown.h"
 #include "lib/user/syscall.h"
 #include "lib/kernel/console.h"
@@ -83,6 +84,10 @@ syscall_init (void)
   number_arguments[SYS_TELL] = 1;
   number_arguments[SYS_CLOSE] = 1;
   number_arguments[SYS_PRACTICE] = 1;
+
+  number_arguments[SYS_BCRESET] = 0;
+  number_arguments[SYS_HITS] = 0;
+  number_arguments[SYS_DEV_W] = 0;
 
   number_arguments[SYS_CHDIR] = 1;
   number_arguments[SYS_MKDIR] = 1;
@@ -329,6 +334,18 @@ static int practice_handler (int i) {
   return i + 1;
 }
 
+static int hits_handler(void) {
+  return cache_hits_return();
+}
+
+static void bc_reset_handler(void) {
+  cache_hits_return();
+}
+
+static int device_writes(void) {
+  return cache_device_writes();
+}
+
 static bool chdir_handler (const char *dir) {
   if (dir == NULL) {
     return false;
@@ -467,6 +484,15 @@ syscall_handler (struct intr_frame *f UNUSED)
         break;
       case SYS_PRACTICE:
         f->eax = practice_handler ((int) args[1]);
+        break;
+      case SYS_HITS:
+        f->eax = hits_handler();
+        break;
+      case SYS_BCRESET:
+        bc_reset_handler();
+        break;
+      case SYS_DEV_W:
+        device_writes();
         break;
       case SYS_CHDIR:
         f->eax = chdir_handler((char *) args[1]);

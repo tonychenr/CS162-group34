@@ -19,8 +19,17 @@ static struct lock eviction_lock;
 // Used to implement the clock algorithm
 static uint32_t clock_hand;
 
+static int cache_hits;
+
+// static int cache_reads;
+// static int cache_writes;
+
+static int device_writes;
+
 void cache_init(void) 
 {
+    cache_hits = 0;
+    device_writes = 0;
     lock_init(&eviction_lock);
     // Create 64 entries in the buffer cache
     int i;
@@ -39,6 +48,30 @@ void cache_init(void)
     clock_hand = 0;
 }
 
+// For testing purposes (lock not acquired because called inside interrupt handler)
+void cache_reset(void) {
+    struct cache_block *curr_block = NULL;
+    int i;
+    for (i = 0; i < 64; i++) {
+        curr_block = &cache[i];
+        curr_block->dirty = 0;
+        curr_block->valid = 0;
+        curr_block->use = 0;
+        curr_block->accessors = 0;
+        curr_block->evict_penders = 0;
+    }
+    cache_hits = 0;
+    device_writes = 0;
+}
+
+int cache_hits_return(void) {
+    return cache_hits;
+}
+
+int cache_device_writes(void) {
+    return device_writes;
+}
+
 /* 
     If curr_block is in the cache, this function locates and returns the block. Return NULL otherwise
     THIS FUNCTION RETURNS POSSESSING AN ENTRIES LOCK
@@ -51,6 +84,7 @@ struct cache_block *cache_find_block(block_sector_t sect)
         curr_block = &cache[i];
         lock_acquire(&curr_block->modify_variables);
         if (curr_block->sect == sect && curr_block->valid) {
+            cache_hits++;
             break;
         }
         lock_release(&curr_block->modify_variables);
@@ -88,6 +122,7 @@ struct cache_block * cache_evict_block(block_sector_t sect)
         if (curr_block->dirty && curr_block->valid) {
             curr_block->valid = 0;
             // printf("write_to_disk: sector=%u\n", curr_block->sect);
+            device_writes++;
             block_write(fs_device, curr_block->sect, curr_block->data);
             // cache_to_disk(curr_block); ACQUIRING LOCK NOT NECESSARY
             curr_block->dirty = 0;
