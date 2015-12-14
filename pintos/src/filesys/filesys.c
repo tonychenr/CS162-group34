@@ -117,6 +117,9 @@ filesys_create (const char *name, off_t initial_size, uint32_t is_dir)
       } else {
         dir_close(search_dir);
         search_dir = dir_open(inode);
+        if (search_dir == NULL) {
+          return false;
+        }
       }
     } else {
       inode = NULL;
@@ -184,6 +187,9 @@ filesys_open (const char *name)
       } else {
         dir_close(search_dir);
         search_dir = dir_open(inode);
+        if (search_dir == NULL) {
+          return false;
+        }
       }
     } else {
       inode = NULL;
@@ -227,11 +233,19 @@ filesys_remove (const char *name)
     if (dir_lookup (search_dir, part, &inode)) {
       dir_close(parent_dir);
       parent_dir = dir_reopen(search_dir);
+      if (parent_dir == NULL) {
+        dir_close(search_dir);
+        return false;
+      }
       if (!inode_is_dir(inode)) {
         break;
       } else {
         dir_close(search_dir);
         search_dir = dir_open(inode);
+        if (search_dir == NULL) {
+          dir_close(parent_dir);
+          return false;
+        }
       }
     } else {
       inode = NULL;
