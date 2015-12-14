@@ -130,7 +130,6 @@ byte_to_sector (const struct inode *inode, off_t pos)
         block_sector = handle_indirect(temp_curr_block, sectors, 1);
         cache_shared_post(temp_curr_block, 1);
       }
-      // printf("byte_to_sector: inode_sector=%u, pos=%u, sectors= %u, indirect=%u, allocated=%u\n", inode->sector, pos, sectors, indirect, block_sector);
     } else {
       sectors -= INDIRECT_BLOCK_POINTER_COUNT;
       size_t offset = sectors % INDIRECT_BLOCK_POINTER_COUNT;
@@ -159,7 +158,6 @@ byte_to_sector (const struct inode *inode, off_t pos)
     }
   }
   
-  // printf("byte_to_sector: block_sector=%u\n", block_sector);
   return block_sector;
 }
 
@@ -191,7 +189,6 @@ inode_create (block_sector_t sector, off_t length, uint32_t is_dir)
   /* If this assertion fails, the inode structure is not exactly
      one sector in size, and you should fix that. */
   ASSERT (sizeof *disk_inode == BLOCK_SECTOR_SIZE);
-  // printf("create: inode_sector=%u\n", sector);
   disk_inode = calloc (1, sizeof *disk_inode);
   if (disk_inode != NULL)
     {
@@ -232,7 +229,6 @@ inode_open (block_sector_t sector)
       if (inode->sector == sector) 
         {
           inode->open_cnt++;
-          // printf("reopen_inode: open_count=%u, sector=%u\n", inode->open_cnt, inode->sector);
           lock_release(&inode_list_lock);
           return inode;
         }
@@ -255,7 +251,6 @@ inode_open (block_sector_t sector)
   lock_init(&inode->deny_write_lock);
   lock_init(&inode->lock);
   lock_release(&inode_list_lock);
-  // printf("new_inode: open_count=%u, sector=%u\n", inode->open_cnt, inode->sector);
   return inode;
 }
 
@@ -266,7 +261,6 @@ inode_reopen (struct inode *inode)
   if (inode != NULL) {
     lock_acquire(&inode_list_lock);
     inode->open_cnt++;
-    // printf("reopen_inode: open_count=%u, sector=%u\n", inode->open_cnt, inode->sector);
     lock_release(&inode_list_lock);
   }
   return inode;
@@ -310,7 +304,6 @@ inode_close (struct inode *inode)
     return;
 
   lock_acquire(&inode_list_lock);
-  // printf("close_inode: open_count=%u, sector=%u\n", inode->open_cnt, inode->sector);
   /* Release resources if this was the last opener. */
   if (--inode->open_cnt == 0)
     {
@@ -371,7 +364,6 @@ inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset)
       off_t inode_left = inode_length (inode) - offset;
       int sector_left = BLOCK_SECTOR_SIZE - sector_ofs;
       int min_left = inode_left < sector_left ? inode_left : sector_left;
-      // printf("size=%u, sector=%u, offset=%u, byte_to_sector=%u, inode_left= %u, sector_left=%u\n", size, inode->sector, offset, sector_idx, inode_left, sector_left);
       /* Number of bytes to actually copy out of this sector. */
       int chunk_size = size < min_left ? size : min_left;
       if (chunk_size <= 0)
@@ -412,7 +404,6 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
   if (inode->deny_write_cnt) {
     return 0;    
   }
-  // printf("write call: inode_sector=%u, size=%u\n", inode->sector, size);
   while (size > 0) 
     {
       /* Sector to write, starting byte offset within sector. */
@@ -433,7 +424,6 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
       if (sector_idx == UNALLOCATED_SECTOR)
         break;
 
-      // printf("write: size=%u, sector=%u, offset=%u, byte_to_sector=%u, sector_left=%u\n", size, inode->sector, offset, sector_idx, sector_left);
       struct cache_block * temp_curr_block;
       temp_curr_block = cache_shared_pre(sector_idx);
       bounce = temp_curr_block->data;

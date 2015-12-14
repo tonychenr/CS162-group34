@@ -159,7 +159,6 @@ filesys_create (const char *name, off_t initial_size, uint32_t is_dir)
   if (!success) 
     free_map_release (inode_sector, 1);
   dir_close (search_dir);
-  // printf("beforesuccess\n");
   free(part);
   return success;
 }

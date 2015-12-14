@@ -118,7 +118,6 @@ struct cache_block * cache_evict_block(block_sector_t sect)
         curr_block->evict_penders--;
         if (curr_block->dirty && curr_block->valid) {
             curr_block->valid = 0;
-            // printf("write_to_disk: sector=%u\n", curr_block->sect);
             device_writes++;
             block_write(fs_device, curr_block->sect, curr_block->data);
             // cache_to_disk(curr_block); ACQUIRING LOCK NOT NECESSARY
@@ -127,9 +126,7 @@ struct cache_block * cache_evict_block(block_sector_t sect)
         // Read directly into the cache without the lock since nothing can modify this entry due to it being invalid 
         // Should not be a sychronization problem
         block_read(fs_device, sect, curr_block->data);
-        // printf("read_from_disk: sector=%u\n", sect);
         curr_block->sect = sect;
-        // curr_block->data = buffer;
         curr_block->valid = 1;
         curr_block->use = 0;
     }
