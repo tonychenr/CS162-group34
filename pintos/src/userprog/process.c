@@ -34,19 +34,22 @@ process_execute (const char *file_name)
 {
   tid_t tid;
   char *fn_copy;
-  char *fn_copy2 = malloc(strlen(file_name) + 1);
-  char *fn_copy3 = fn_copy2;
+  char *fn_copy2;
   char *saveptr;
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0);
   if (fn_copy == NULL) {
-    free(fn_copy2);
     return TID_ERROR;
   }
   strlcpy (fn_copy, file_name, PGSIZE);
 
   // Changed the file name to be just the first argument
+  fn_copy2 = malloc(strlen(file_name) + 1);
+  if (fn_copy2 == NULL) {
+    return TID_ERROR;
+  }
+  char *fn_copy3 = fn_copy2;
   strlcpy (fn_copy2, file_name, strlen(file_name) + 1);
   file_name = strtok_r(fn_copy3, " ", &saveptr);
 
