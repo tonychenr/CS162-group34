@@ -173,24 +173,13 @@ static bool create_handler (const char *file, unsigned initial_size) {
   if (file == NULL) {
     exit_handler(-1);
   }
-  char *file_copy = malloc(strlen(file) + 1);
-  if (file_copy == NULL) {
-    return false;
-  }
-  strlcpy(file_copy, file, strlen(file) + 1);
-  bool success = filesys_create(file_copy, initial_size, 0);
-  free(file_copy);
+
+  bool success = filesys_create(file, initial_size, 0);
   return success; 
 }
 
 static bool remove_handler (const char *file) {
-  char *file_copy = malloc(strlen(file) + 1);
-  if (file_copy == NULL) {
-    return false;
-  }
-  strlcpy(file_copy, file, strlen(file) + 1);
-  bool destroyed = filesys_remove(file_copy);
-  free(file_copy);
+  bool destroyed = filesys_remove(file);
   return destroyed;
 }
 
@@ -199,15 +188,8 @@ static int open_handler (const char *file) {
     return -1;
   }
 
-  char *file_copy = malloc(strlen(file) + 1);
-  if (file_copy == NULL) {
-    return -1;
-  }
-  strlcpy(file_copy, file, strlen(file) + 1);
-
-  struct inode *inode = filesys_open(file_copy);
+  struct inode *inode = filesys_open(file);
   if (inode == NULL) {
-    free(file_copy);
     return -1;
   }
 
@@ -216,13 +198,11 @@ static int open_handler (const char *file) {
   if (inode_is_dir(inode)) {
     sys_dir = dir_open(inode);
     if (sys_dir == NULL) {
-      free(file_copy);
       return -1;
     }
   } else {
     sys_file = file_open(inode);
     if (sys_file == NULL) {
-      free(file_copy);
       return -1;
     }
   }
@@ -234,7 +214,6 @@ static int open_handler (const char *file) {
     } else {
       dir_close(sys_dir);
     }
-    free(file_copy);
     return -1;
   }
 
@@ -242,7 +221,6 @@ static int open_handler (const char *file) {
   fstruct->fd = create_fd();
   fstruct->sys_file = sys_file;
   fstruct->sys_dir = sys_dir;
-  free(file_copy);
   return fstruct->fd;
 }
 
@@ -351,12 +329,8 @@ static bool chdir_handler (const char *dir) {
     return false;
   }
 
-  char *dir_copy = malloc(strlen(dir) + 1);
-  strlcpy(dir_copy, dir, strlen(dir) + 1);
-
-  struct dir *new_dir = dir_open(filesys_open(dir_copy));
+  struct dir *new_dir = dir_open(filesys_open(dir));
   if (new_dir == NULL) {
-    free(dir_copy);
     return false;
   }
 
@@ -369,7 +343,6 @@ static bool chdir_handler (const char *dir) {
     dir_close(t->cwd);
   }
   t->cwd = new_dir;
-  free(dir_copy);
   return true;
 }
 
@@ -377,13 +350,7 @@ static bool mkdir_handler (const char *dir) {
   if (dir == NULL) {
     exit_handler(-1);
   }
-  char *dir_copy = malloc(strlen(dir) + 1);
-  if (dir_copy == NULL) {
-    return false;
-  }
-  strlcpy(dir_copy, dir, strlen(dir) + 1);
-  bool success = filesys_create(dir_copy, 0, 1);
-  free(dir_copy);
+  bool success = filesys_create(dir, 0, 1);
   return success;
 }
 

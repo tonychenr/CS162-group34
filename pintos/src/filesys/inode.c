@@ -93,7 +93,7 @@ static block_sector_t handle_indirect (struct cache_block *temp_curr_block, size
           set_indirect_block(block_sector);
         else
           set_direct_block(block_sector);
-        indirect_block[index] = block_sector;        
+        indirect_block[index] = block_sector;
       }
   }
 
