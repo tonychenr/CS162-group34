@@ -382,7 +382,9 @@ static bool mkdir_handler (const char *dir) {
     return false;
   }
   strlcpy(dir_copy, dir, strlen(dir) + 1);
-  return filesys_create(dir_copy, 0, 1);
+  bool success = filesys_create(dir_copy, 0, 1);
+  free(dir_copy);
+  return success;
 }
 
 static bool readdir_handler (int fd, char *dir) {

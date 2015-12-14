@@ -8,6 +8,7 @@
 #include "filesys/directory.h"
 #include "filesys/cache.h"
 #include "threads/thread.h"
+#include "threads/malloc.h"
 
 /* Partition that contains the file system. */
 struct block *fs_device;
@@ -107,7 +108,8 @@ filesys_create (const char *name, off_t initial_size, uint32_t is_dir)
     return false;
   }
 
-  char part[NAME_MAX + 1] = "";
+  char *part = malloc(NAME_MAX + 1);
+  memset(part, 0, NAME_MAX + 1);
   int retrieved_next_part;
   for (retrieved_next_part = get_next_part(part, &name); retrieved_next_part > 0;
        retrieved_next_part = get_next_part(part, &name)) {
@@ -118,6 +120,7 @@ filesys_create (const char *name, off_t initial_size, uint32_t is_dir)
         dir_close(search_dir);
         search_dir = dir_open(inode);
         if (search_dir == NULL) {
+          free(part);
           return false;
         }
       }
@@ -131,6 +134,7 @@ filesys_create (const char *name, off_t initial_size, uint32_t is_dir)
       inode_close(inode);
     }
     dir_close(search_dir);
+    free(part);
     return false;
   }
 
@@ -153,7 +157,7 @@ filesys_create (const char *name, off_t initial_size, uint32_t is_dir)
     free_map_release (inode_sector, 1);
   dir_close (search_dir);
   // printf("beforesuccess\n");
-
+  free(part);
   return success;
 }
 
@@ -177,7 +181,8 @@ filesys_open (const char *name)
     inode = dir_get_inode(search_dir);
   }
 
-  char part[NAME_MAX + 1] = "";
+  char *part = malloc(NAME_MAX + 1);
+  memset(part, 0, NAME_MAX + 1);
   int retrieved_next_part;
   for (retrieved_next_part = get_next_part(part, &name); retrieved_next_part > 0;
        retrieved_next_part = get_next_part(part, &name)) {
@@ -188,6 +193,7 @@ filesys_open (const char *name)
         dir_close(search_dir);
         search_dir = dir_open(inode);
         if (search_dir == NULL) {
+          free(part);
           return false;
         }
       }
@@ -205,7 +211,7 @@ filesys_open (const char *name)
     inode_close(inode);
     inode = NULL;
   }
-
+  free(part);
   return inode;
 }
 
@@ -226,7 +232,8 @@ filesys_remove (const char *name)
   }
 
   parent_dir = dir_reopen(search_dir);
-  char part[NAME_MAX + 1] = "";
+  char *part = malloc(NAME_MAX + 1);
+  memset(part, 0, NAME_MAX + 1);
   int retrieved_next_part;
   for (retrieved_next_part = get_next_part(part, &name); retrieved_next_part > 0;
        retrieved_next_part = get_next_part(part, &name)) {
@@ -235,6 +242,7 @@ filesys_remove (const char *name)
       parent_dir = dir_reopen(search_dir);
       if (parent_dir == NULL) {
         dir_close(search_dir);
+        free(part);
         return false;
       }
       if (!inode_is_dir(inode)) {
@@ -244,6 +252,7 @@ filesys_remove (const char *name)
         search_dir = dir_open(inode);
         if (search_dir == NULL) {
           dir_close(parent_dir);
+          free(part);
           return false;
         }
       }
@@ -259,12 +268,14 @@ filesys_remove (const char *name)
     }
     dir_close(parent_dir);
     dir_close(search_dir);
+    free(part);
     return false;
   }
 
   if (parent_dir == NULL || search_dir == NULL) {
     dir_close(search_dir);
     dir_close(parent_dir);
+    free(part);
     return false;
   }
 
@@ -283,6 +294,7 @@ filesys_remove (const char *name)
 
   dir_close(search_dir);
   dir_close(parent_dir);
+  free(part);
   return success;
 }
 
