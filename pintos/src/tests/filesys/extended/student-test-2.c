@@ -4,6 +4,7 @@
 #include <syscall-nr.h> 
 
 // static char buf[64000];
+//
 
 void
 test_main (void) 
@@ -32,5 +33,5 @@ test_main (void)
 		count++;
 	}
 	int dev_writes_total = device_writes_sys();
-	CHECK (dev_writes_total <= 128, "not the expected order of writes");
+	CHECK (dev_writes_total <= 200, "not the expected order of writes");
 }

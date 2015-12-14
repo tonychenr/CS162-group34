@@ -23,5 +23,5 @@ test_main (void)
 	read (handle, &buf, 512 * 16);
 	hit_count2 = hit_rate_sys();
 	close(handle);
-	CHECK (hit_count1 < hit_count2, "number of hits is not greater the second time");
+	CHECK (hit_count1 <= hit_count2, "number of hits is not greater the second time");
 }
