@@ -21,9 +21,6 @@ static uint32_t clock_hand;
 
 static int cache_hits;
 
-// static int cache_reads;
-// static int cache_writes;
-
 static int device_writes;
 
 void cache_init(void) 

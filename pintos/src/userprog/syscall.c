@@ -339,7 +339,7 @@ static int hits_handler(void) {
 }
 
 static void bc_reset_handler(void) {
-  cache_hits_return();
+  cache_reset();
 }
 
 static int device_writes(void) {

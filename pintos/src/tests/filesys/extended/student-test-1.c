@@ -13,12 +13,12 @@ test_main (void)
 	int hit_count1;
 	int hit_count2;
 	reset_sys ();
-	handle = open("full_cache_sample.txt");
+	handle = open("sample.txt");
 	// Should not be any hits after resetting cache
   	read (handle, &buf, 512 * 16);
 	hit_count1 = hit_rate_sys() ;
 	close(handle);
-	handle = open("full_cache_sample.txt");
+	handle = open("sample.txt");
 	// Should be about 64 hits or so
 	read (handle, &buf, 512 * 16);
 	hit_count2 = hit_rate_sys();
