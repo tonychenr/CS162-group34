@@ -26,8 +26,6 @@ struct inode_disk
     block_sector_t indirect[2];         /* Indirect (i=0) and Double Indirect (i=1) pointers */
   };
 
-typedef uint32_t block_sector_t;
-
 static struct lock inode_list_lock;
 
 /* Returns the number of sectors to allocate for an inode SIZE

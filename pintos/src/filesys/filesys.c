@@ -109,6 +109,9 @@ filesys_create (const char *name, off_t initial_size, uint32_t is_dir)
   }
 
   char *part = malloc(NAME_MAX + 1);
+  if (part == NULL) {
+    return false;
+  }
   memset(part, 0, NAME_MAX + 1);
   int retrieved_next_part;
   for (retrieved_next_part = get_next_part(part, &name); retrieved_next_part > 0;
@@ -182,6 +185,9 @@ filesys_open (const char *name)
   }
 
   char *part = malloc(NAME_MAX + 1);
+  if (part == NULL) {
+    return false;
+  }
   memset(part, 0, NAME_MAX + 1);
   int retrieved_next_part;
   for (retrieved_next_part = get_next_part(part, &name); retrieved_next_part > 0;
@@ -233,6 +239,9 @@ filesys_remove (const char *name)
 
   parent_dir = dir_reopen(search_dir);
   char *part = malloc(NAME_MAX + 1);
+  if (part == NULL) {
+    return false;
+  }
   memset(part, 0, NAME_MAX + 1);
   int retrieved_next_part;
   for (retrieved_next_part = get_next_part(part, &name); retrieved_next_part > 0;

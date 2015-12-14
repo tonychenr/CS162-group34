@@ -91,8 +91,15 @@ start_process (void *file_name_)
   char *file_name = file_name_;
   struct intr_frame if_;
   bool success;
-
+  struct thread *t = thread_current();
+  struct p_data *parent_data = t->parent_data;
   char *file_name_copy = malloc(strlen(file_name) + 1);
+  if (file_name_copy == NULL) {
+    palloc_free_page (file_name);
+    parent_data->exec_success = -1;
+    sema_up(&parent_data->exec_sema);
+    exit_handler(-1);
+  }
   char *file_name_copy2 = file_name_copy;
   strlcpy(file_name_copy, file_name, strlen(file_name) + 1);
   char * token, *saveptr1;
@@ -106,8 +113,6 @@ start_process (void *file_name_)
     counter++;
     token = strtok_r(NULL, " ", &saveptr1);
   }
-  struct thread *t = thread_current();
-  struct p_data *parent_data = t->parent_data;
   if (arg_string_size > 4000) {
     // Too many arguments . . . handle accordingly
     palloc_free_page (file_name);
