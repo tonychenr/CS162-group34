@@ -4,9 +4,91 @@ student-test-2 tests our buffer cache's ability to coalesce writes to the same s
 
 Both tests work in a similar manner. In order to create these tests, a few syscalls were written that basically return the values of variables such as "hit_rate" and "device_writes" to user programs. A syscall was also written that resets such values and the entire cache's (metadata). These variables were added to our cache.c and are incremented appropriately as the cache is used throughout a user program. The implicit TO-DO list for creating tests was followed closely. A brief overview of how variables are returned to the user program: functions were written in the user syscall.c that cause the handler to use getter function defined in cache.c to return the desired values or cache_reset(), in the case of test-1 hit_rate and cache_reset() and in the case of test-2 device_writes.
 
-output:
+result:
 	student-test-1 - PASS
 	student-test-2 - PASS
+
+output:
+	student-test-1 -
+Copying tests/filesys/extended/student-test-1 to scratch partition...
+Copying tests/filesys/extended/tar to scratch partition...
+qemu -hda /tmp/atadVKqQUM.dsk -hdb tmp.dsk -m 4 -net none -nographic -monitor null
+PiLo hda1
+Loading...........
+Kernel command line: -q -f extract run student-test-1
+Pintos booting with 4,088 kB RAM...
+382 pages available in kernel pool.
+382 pages available in user pool.
+Calibrating timer...  676,659,200 loops/s.
+hda: 1,008 sectors (504 kB), model "QM00001", serial "QEMU HARDDISK"
+hda1: 176 sectors (88 kB), Pintos OS kernel (20)
+hda2: 234 sectors (117 kB), Pintos scratch (22)
+hdb: 5,040 sectors (2 MB), model "QM00002", serial "QEMU HARDDISK"
+hdb1: 4,096 sectors (2 MB), Pintos file system (21)
+filesys: using hdb1
+scratch: using hda2
+Formatting file system...done.
+Boot complete.
+Extracting ustar archive from scratch device into file system...
+Putting 'student-test-1' into the file system...
+Putting 'tar' into the file system...
+Erasing ustar archive...
+Executing 'student-test-1':
+(student-test-1) begin
+(student-test-1) number of hits is not greater the second time
+(student-test-1) end
+student-test-1: exit(0)
+Execution of 'student-test-1' complete.
+Timer: 74 ticks
+Thread: 0 idle ticks, 71 kernel ticks, 3 user ticks
+hdb1 (filesys): 271 reads, 483 writes
+hda2 (scratch): 233 reads, 2 writes
+Console: 1092 characters output
+Keyboard: 0 keys pressed
+Exception: 0 page faults
+Powering off...
+
+	student-test-2
+Copying tests/filesys/extended/student-test-2 to scratch partition...
+Copying tests/filesys/extended/tar to scratch partition...
+qemu -hda /tmp/t1EQmjY6zY.dsk -hdb tmp.dsk -m 4 -net none -nographic -monitor null
+PiLo hda1
+Loading...........
+Kernel command line: -q -f extract run student-test-2
+Pintos booting with 4,088 kB RAM...
+382 pages available in kernel pool.
+382 pages available in user pool.
+Calibrating timer...  515,276,800 loops/s.
+hda: 1,008 sectors (504 kB), model "QM00001", serial "QEMU HARDDISK"
+hda1: 176 sectors (88 kB), Pintos OS kernel (20)
+hda2: 235 sectors (117 kB), Pintos scratch (22)
+hdb: 5,040 sectors (2 MB), model "QM00002", serial "QEMU HARDDISK"
+hdb1: 4,096 sectors (2 MB), Pintos file system (21)
+filesys: using hdb1
+scratch: using hda2
+Formatting file system...done.
+Boot complete.
+Extracting ustar archive from scratch device into file system...
+Putting 'student-test-2' into the file system...
+Putting 'tar' into the file system...
+Erasing ustar archive...
+Executing 'student-test-2':
+(student-test-2) begin
+(student-test-2) create "temp_test.txt"
+(student-test-2) open "temp_test.txt"
+(student-test-2) not the expected order of writes
+(student-test-2) end
+student-test-2: exit(0)
+Execution of 'student-test-2' complete.
+Timer: 1873 ticks
+Thread: 2 idle ticks, 68 kernel ticks, 1803 user ticks
+hdb1 (filesys): 399 reads, 741 writes
+hda2 (scratch): 234 reads, 2 writes
+Console: 1162 characters output
+Keyboard: 0 keys pressed
+Exception: 0 page faults
+Powering off...
+
 
 A bug in the kernel's file syscalls would likely cause both test-1 and test-2 to never run. For example, if open doesn't work and always returns -1 as the file handle, the test would have failure output. 
 
