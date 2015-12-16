@@ -1,0 +1,63 @@
+***---Final Report---***
+
+***Group 34***
+Prudhvi Lokireddy <prudhvil@berkeley.edu>
+Tony Chen <sirtony@berkeley.edu>
+Khalid Shakur <khalidshakur@berkeley.edu>
+Nick Wissman <nickwissman@berkeley.edu>
+
+***Changes to Initial Design***
+
+---Buffer Cache---
+One major change was made to our original buffer cache design. In our original design we referenced using a shared lock to provide the proper synchronization of reads, writes, and eviction. Instead we decided to use an eviction lock for the entire table in order to make sure only one eviction occurs at a time, preventing duplicate blocks in cache, and providing mutual exclusion of the clock_hand, which only 1 thread should modify at a time. Also, we added a condition variable to the cache_block struct that is used to ensure that evictions don’t occur while reads and/or writes are occurring for that block. In the case that reads and/or writes are occurring, a thread evicting will wait on the condition variable and will be woken up by the final read or write. In the end, the readers-writer lock was not necessary, because many of both could occur at the same time, as stated in the project spec.
+
+static struct lock eviction_lock;
+
+struct cache_block {
+  block_sector_t sect;
+  uint8_t dirty;
+  uint8_t valid;
+  uint32_t accessors; // Number of reads and writes at a particular moment
+  uint32_t evict_penders; // Number of threads waiting to evict this entry and bring in their data
+  struct lock modify_variables;
+  struct condition need_to_evict; // condition variable that threads needing to evict wait on if reads and writes are occurring when attempt to evict occurs
+  uint8_t use;
+  uint8_t data[BLOCK_SECTOR_SIZE];
+}
+
+
+
+---Files / Extensible Files---
+
+static struct lock inode_list_lock;    /* Lock for adding and removing locks from open_inodes list */
+
+struct inode {
+  struct lock length_lock;            /* Lock to synchronize length updates */
+  struct lock deny_write_lock;        /* Lock to synchronize deny_write_cnt updates */
+  struct lock lock;                   /* Inode lock */
+};
+
+1. Added direct pointers to fill unused space in inode_disk, because it would be a waste of space otherwise.
+
+2. Did not include an indirect_block struct. It was simpler to simply view a block on disk as an array of block_sector_t.
+
+3. No EOF lock. Writes simply extend the length of the file at the end of write. To prevent race conditions on modifying the length, there was an inode_length_lock.
+
+---Subdirectories---
+
+1. Used open_cnt in inode instead of storing extra ref_count in dir struct, because the inode underlies directories anyway.
+
+2. No extra dir_struct. Used the file_struct from previous project, and added a pointer to a directory. Either the file struct or dir struct pointer would be null depending on what the file_struct represents. This simplifies assigning file descriptors, and doesn’t require modifying much code from previous project to handle another list of dir_structs.
+
+3. No dir_entry lock. It was simpler to use a lock on the underlying inode, which was shared by all dir structs anyway.
+
+
+***What went well***
+
+Most tests were passed. Overall design of project wasn’t very complicated. Not much base code required changing.
+
+***What could be improved***
+
+Members could adhere to the timelines they set better. Members could be more thorough with work. Members could communicate more when they’re struggling to implement their part.
+
+
